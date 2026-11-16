@@ -1,0 +1,14 @@
+# Build-Ausgaben
+.pio/
+release/
+web-flasher/firmware/
+
+# Flash-Sicherung des eigenen Geraets: kann WLAN-Zugangsdaten enthalten, NIE hochladen
+backup/
+
+# Editor/System
+.vscode/
+*.pyc
+__pycache__/
+.DS_Store
+Thumbs.db

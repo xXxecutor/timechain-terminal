@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Timechain Terminal installieren</title>
+<script type="module" src="https://unpkg.com/esp-web-tools@10.4.0/dist/web/install-button.js?module"></script>
+<style>
+  :root { --bg:#f6f6f4; --card:#fff; --fg:#1a1a1a; --mut:#555; --acc:#f7931a; --line:#ddd; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#121212; --card:#1e1e1e; --fg:#eee; --mut:#aaa; --line:#333; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:17px/1.55 system-ui, sans-serif; }
+  main { max-width:640px; margin:0 auto; padding:24px 16px 48px; }
+  h1 { font-size:26px; margin:0 0 4px; } h1 b { color:var(--acc); }
+  .sub { color:var(--mut); margin:0 0 24px; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px 20px; margin:0 0 16px; }
+  h2 { font-size:18px; margin:0 0 8px; }
+  ol { padding-left:22px; margin:8px 0; } li { margin:4px 0; }
+  code { background:var(--bg); padding:1px 5px; border-radius:4px; }
+  esp-web-install-button button[slot="activate"] { padding:12px 22px; border:0; border-radius:8px;
+    background:var(--acc); color:#000; font:inherit; font-weight:700; cursor:pointer; }
+  .warn { color:var(--mut); font-size:15px; }
+</style>
+</head>
+<body>
+<main>
+  <h1><b>&#8383;</b> Timechain Terminal</h1>
+  <p class="sub">Firmware für das Good Display GDP075FW1 (7,5" E-Paper, 4 Farben) – direkt aus dem Browser installieren.</p>
+
+  <section>
+    <h2>1. Gerät anschließen</h2>
+    <p>Das Schild per USB-Kabel mit dem Computer verbinden. Es meldet sich als „USB-SERIAL CH340“.
+      Fehlt unter Windows der Treiber, den CH340-Treiber des Herstellers WCH installieren.</p>
+  </section>
+
+  <section>
+    <h2>2. Installieren</h2>
+    <p>
+      <esp-web-install-button manifest="manifest.json">
+        <button slot="activate">Firmware installieren</button>
+        <span slot="unsupported">Dein Browser kann keine USB-Geräte ansprechen. Bitte Chrome oder Edge am Computer verwenden.</span>
+        <span slot="not-allowed">Die Seite muss über HTTPS geöffnet werden.</span>
+      </esp-web-install-button>
+    </p>
+    <p class="warn">Bei der ersten Installation „Gerät löschen“ bestätigen. Das Schreiben dauert etwa 2 Minuten.</p>
+  </section>
+
+  <section>
+    <h2>3. WLAN einrichten</h2>
+    <ol>
+      <li>Das Display zeigt „WLAN einrichten“.</li>
+      <li>Mit dem Handy das WLAN <b>Timechain Terminal</b> wählen, die Einrichtungsseite öffnet sich.</li>
+      <li>„Configure WiFi“ – das eigene 2,4-GHz-WLAN wählen und das Passwort eingeben.
+        Optional einen eigenen mempool-Server eintragen.</li>
+    </ol>
+    <p>Danach erreichst du das Gerät im Heimnetz unter <code>http://timechain-terminal.local</code>
+      (Einstellungen, Firmware-Updates ohne Kabel).</p>
+  </section>
+</main>
+</body>
+</html>
