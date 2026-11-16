@@ -206,12 +206,16 @@ function toast(msg,kind,ms,id){let e=id&&document.getElementById(id);if(!e){e=do
 e.className='msg'+(kind?' '+kind:'');e.firstChild.textContent=msg;arm(e,ms);return e}
 window.toast=toast;tb.querySelectorAll('.msg').forEach(e=>arm(e,e.classList.contains('err')?15000:7000));
 // Status des Displays: neu gezeichnet wird gerade (keine Antwort), gleich (pending) oder ist fertig
-let renders=null,busy=false;
-function poll(){const c=new AbortController(),t=setTimeout(()=>c.abort(),4500);
-fetch('/api/status',{signal:c.signal,cache:'no-store'}).then(r=>r.json()).then(j=>{clearTimeout(t);
-if(renders!==null&&j.renders>renders){toast(T.done,'',5000,'tdisp');document.querySelectorAll('img.shot[data-live]').forEach(i=>{i._o=null;i._m=0;i.src='/preview.bmp?t='+Date.now()})}
+// Eine einzelne verspaetete Antwort ist kein Bildwechsel (nach einem Bildwechsel arbeitet das Geraet
+// erst den Rueckstau ab): "gerade neu gezeichnet" erst nach zwei Fehlschlaegen in Folge oder wenn
+// der Bildwechsel angekuendigt war, und nicht in den ersten 20 s nach "aktualisiert"
+let renders=null,busy=false,fails=0,quiet=0;
+function poll(){const c=new AbortController(),t=setTimeout(()=>c.abort(),6000);
+fetch('/api/status',{signal:c.signal,cache:'no-store'}).then(r=>r.json()).then(j=>{clearTimeout(t);fails=0;
+if(renders!==null&&j.renders>renders){quiet=Date.now()+20000;toast(T.done,'',5000,'tdisp');document.querySelectorAll('img.shot[data-live]').forEach(i=>{i._o=null;i._m=0;i.src='/preview.bmp?t='+Date.now()})}
 else if(j.pending)toast(T.soon,'busy',0,'tdisp');else if(busy)hide(document.getElementById('tdisp'));
-busy=j.pending;renders=j.renders}).catch(()=>{clearTimeout(t);if(renders!==null){toast(T.busy,'busy',0,'tdisp');busy=true}})
+busy=j.pending;renders=j.renders}).catch(()=>{clearTimeout(t);fails++;
+if(renders!==null&&Date.now()>quiet&&(busy||fails>=2)){toast(T.busy,'busy',0,'tdisp');busy=true}})
 .finally(()=>setTimeout(poll,document.hidden?15000:3000))}
 poll()})();
 </script>)js";
