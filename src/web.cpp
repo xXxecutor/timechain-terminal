@@ -1,9 +1,11 @@
 // Geraete-Webseite: http://timechain-terminal.local (bzw. IP)
 // Status mit aktuellem Bild, Layout-Editor, Einstellungen, Datenquelle, Passwort,
-// Firmware-Update, WLAN-Reset. Optional mit Passwort (HTTP Basic Auth, Benutzer "admin").
+// Firmware-Update, WLAN. Optional mit Passwort (HTTP-Digest-Anmeldung, Benutzer "admin").
 #include "app.h"
 #include <ESPmDNS.h>
 #include <Update.h>
+#include <MD5Builder.h>
+#include <Preferences.h>
 
 static WebServer server(80);
 bool refreshRequested = false;
@@ -26,16 +28,94 @@ static void flash(const String &m, bool err = false) {
   flashIsError = err;
 }
 
+// Anmeldung per HTTP-Digest (RFC 7616, MD5, qop=auth): Das Passwort geht nie im Klartext durchs Netz,
+// Basic-Anmeldungen werden abgelehnt. Die Nonce liegt dauerhaft im NVS, damit der Browser nach
+// einem Neustart des Geraets nicht erneut fragt.
+static const char REALM[] = PRODUCT_NAME;
+static String digestNonce, digestOpaque;
+
+static String md5hex(const String &s) {
+  MD5Builder m;
+  m.begin();
+  m.add(s);
+  m.calculate();
+  return m.toString();
+}
+
+static void loadDigestNonce() {
+  if (digestNonce.length()) return;
+  Preferences p;
+  p.begin("btcauth", false);
+  digestNonce = p.getString("nonce", "");
+  digestOpaque = p.getString("opaque", "");
+  if (digestNonce.length() != 32 || digestOpaque.length() != 32) {
+    auto rnd = [] {
+      char b[33];
+      for (int i = 0; i < 4; ++i) snprintf(b + i * 8, 9, "%08lx", (unsigned long)esp_random());
+      return String(b);
+    };
+    digestNonce = rnd(), digestOpaque = rnd();
+    p.putString("nonce", digestNonce);
+    p.putString("opaque", digestOpaque);
+  }
+  p.end();
+}
+
+// Wert eines Parameters im Authorization-Header (mit oder ohne Anfuehrungszeichen)
+static String authParam(const String &h, const char *name) {
+  String key = String(name) + "=";
+  int i = 0;
+  while ((i = h.indexOf(key, i)) >= 0) {
+    if (i == 0 || h[i - 1] == ' ' || h[i - 1] == ',') break;
+    i += key.length();
+  }
+  if (i < 0) return "";
+  i += key.length();
+  if (i < (int)h.length() && h[i] == '"') {
+    int e = h.indexOf('"', i + 1);
+    return e < 0 ? String("") : h.substring(i + 1, e);
+  }
+  int e = h.indexOf(',', i);
+  String v = e < 0 ? h.substring(i) : h.substring(i, e);
+  v.trim();
+  return v;
+}
+
+static const char *methodName() {
+  switch (server.method()) {
+    case HTTP_POST: return "POST";
+    case HTTP_PUT: return "PUT";
+    case HTTP_DELETE: return "DELETE";
+    default: return "GET";
+  }
+}
+
 static bool authorized() {
   if (!cfg.password.length()) return true;
-  return server.authenticate("admin", cfg.password.c_str());
+  loadDigestNonce();
+  const String h = server.header("Authorization");
+  if (!h.startsWith("Digest ")) return false;
+  if (authParam(h, "username") != "admin" || authParam(h, "realm") != REALM || authParam(h, "nonce") != digestNonce)
+    return false;
+  const String uri = authParam(h, "uri"), resp = authParam(h, "response"), qop = authParam(h, "qop");
+  if (!uri.startsWith(server.uri())) return false;  // Antwort gehoert zu einer anderen Adresse
+  const String ha1 = md5hex(String("admin:") + REALM + ":" + cfg.password);
+  const String ha2 = md5hex(String(methodName()) + ":" + uri);
+  String expect;
+  if (qop == "auth")
+    expect = md5hex(ha1 + ":" + digestNonce + ":" + authParam(h, "nc") + ":" + authParam(h, "cnonce") + ":auth:" + ha2);
+  else
+    expect = md5hex(ha1 + ":" + digestNonce + ":" + ha2);
+  return resp.length() == 32 && resp.equalsIgnoreCase(expect);
 }
 
 // Am Anfang jedes Handlers: false = Passwortabfrage wurde gesendet
 static bool guard() {
   if (authorized()) return true;
-  server.requestAuthentication(BASIC_AUTH, PRODUCT_NAME,
-                               L("Passwort erforderlich", "Password required"));
+  loadDigestNonce();
+  server.sendHeader("WWW-Authenticate", String("Digest realm=\"") + REALM + "\", qop=\"auth\", algorithm=MD5, nonce=\"" +
+                                            digestNonce + "\", opaque=\"" + digestOpaque + "\"");
+  server.send(401, "text/plain; charset=utf-8", L("Passwort erforderlich", "Password required"));
   return false;
 }
 
@@ -735,7 +815,16 @@ static const char EDITOR[] PROGMEM = R"(
 #grid{position:absolute;background-image:linear-gradient(#0000 calc(100% - 1px),#0001 0),linear-gradient(90deg,#0000 calc(100% - 1px),#0001 0);background-size:5% 8.333%}
 .w{position:absolute;background:#fff;border:2px solid #1a1a1a;border-radius:3px;color:#1a1a1a;font:600 clamp(9px,1.6vw,14px) system-ui;padding:4px 6px;cursor:move;overflow:hidden;user-select:none}
 .w.bad{border-color:#c62828;background:#fde8e8}.w small{display:block;font-weight:400;opacity:.6}
-.w .rs{position:absolute;right:0;bottom:0;width:18px;height:18px;cursor:nwse-resize;background:linear-gradient(135deg,#0000 50%,#c8261e 50%)}
+.w .rs{position:absolute;z-index:1;opacity:0;transition:opacity .15s}.w:hover .rs,.w .rs[data-e=se]{opacity:1}
+.rs[data-e=n],.rs[data-e=s]{left:16px;right:16px;height:9px;cursor:ns-resize}.rs[data-e=n]{top:-2px}.rs[data-e=s]{bottom:-2px}
+.rs[data-e=e],.rs[data-e=w]{top:16px;bottom:16px;width:9px;cursor:ew-resize}.rs[data-e=e]{right:-2px}.rs[data-e=w]{left:-2px}
+.rs[data-e=n]:hover,.rs[data-e=s]:hover,.rs[data-e=e]:hover,.rs[data-e=w]:hover{background:#c8261e66}
+.rs[data-e=nw],.rs[data-e=ne],.rs[data-e=sw],.rs[data-e=se]{width:16px;height:16px}
+.rs[data-e=nw]{left:0;top:0;cursor:nwse-resize;background:linear-gradient(315deg,#0000 50%,#c8261e 50%)}
+.rs[data-e=ne]{right:0;top:0;cursor:nesw-resize;background:linear-gradient(45deg,#0000 50%,#c8261e 50%)}
+.rs[data-e=sw]{left:0;bottom:0;cursor:nesw-resize;background:linear-gradient(225deg,#0000 50%,#c8261e 50%)}
+.rs[data-e=se]{right:0;bottom:0;cursor:nwse-resize;background:linear-gradient(135deg,#0000 50%,#c8261e 50%)}
+.w{padding-left:10px}
 </style>
 <script>
 const WI=%WIDGETS%,DEF="%DEFAULT%",T=%TEXTS%;let L=parse("%LAYOUT%");
@@ -753,17 +842,20 @@ function overlap(a,b){return a.x<b.x+b.w&&b.x<a.x+a.w&&a.y<b.y+b.h&&b.y<a.y+a.h}
 function bad(o){return L.some(p=>p!==o&&overlap(o,p))}
 function render(){grid.innerHTML='';let ok=true;for(const o of L){const d=document.createElement('div'),i=info(o.k),b=bad(o);ok=ok&&!b;
 d.className='w'+(b?' bad':'');pos(d,o);
-d.innerHTML=i.n+'<small>'+o.w+' × '+o.h+'</small><small>'+T.min+' '+i.mw+'×'+i.mh+' · '+T.max+' '+i.xw+'×'+i.xh+'</small><div class="rs"></div>';d.title=i.n+': '+T.min+' '+i.mw+'×'+i.mh+', '+T.max+' '+i.xw+'×'+i.xh;drag(d,o);grid.appendChild(d)}
+d.innerHTML=i.n+'<small>'+o.w+' × '+o.h+'</small><small>'+T.min+' '+i.mw+'×'+i.mh+' · '+T.max+' '+i.xw+'×'+i.xh+'</small>'+['n','s','e','w','nw','ne','sw','se'].map(e=>'<div class="rs" data-e="'+e+'"></div>').join('');d.title=i.n+': '+T.min+' '+i.mw+'×'+i.mh+', '+T.max+' '+i.xw+'×'+i.xh;drag(d,o);grid.appendChild(d)}
 document.getElementById('save').disabled=!ok;st.textContent=ok?'':T.overlap;pal();if(ok&&window.pvReady)updPreview()}
 function pal(){const p=document.getElementById('pal');p.innerHTML='';for(const i of WI){const l=document.createElement('label'),c=document.createElement('input');c.type='checkbox';c.checked=L.some(o=>o.k==i.k);
 c.onchange=()=>{if(c.checked)add(i);else L=L.filter(o=>o.k!=i.k);render()};l.title=T.min+' '+i.mw+'×'+i.mh+', '+T.max+' '+i.xw+'×'+i.xh;l.append(c,i.n);p.appendChild(l)}}
 function free(o){return o.x>=0&&o.y>=0&&o.x+o.w<=C&&o.y+o.h<=R&&!L.some(p=>overlap(o,p))}
 function add(i){for(const[w,h]of[[i.dw,i.dh],[i.mw,i.mh]])for(let y=0;y+h<=R;y++)for(let x=0;x+w<=C;x++){const o={k:i.k,x,y,w,h};if(free(o)){L.push(o);return}}
 L.push({k:i.k,x:0,y:0,w:i.mw,h:i.mh});st.textContent=T.nospace}
-function drag(d,o){d.onpointerdown=e=>{e.preventDefault();d.setPointerCapture(e.pointerId);const rs=e.target.classList.contains('rs'),r=grid.getBoundingClientRect(),
+function drag(d,o){d.onpointerdown=e=>{e.preventDefault();d.setPointerCapture(e.pointerId);const rs=e.target.classList.contains('rs')?e.target.dataset.e:'',r=grid.getBoundingClientRect(),
 cw=r.width/C,ch=r.height/R,sx=e.clientX,sy=e.clientY,s={...o},i=info(o.k);
 d.onpointermove=m=>{const dx=Math.round((m.clientX-sx)/cw),dy=Math.round((m.clientY-sy)/ch);
-if(rs){o.w=Math.max(i.mw,Math.min(C-o.x,i.xw,s.w+dx));o.h=Math.max(i.mh,Math.min(R-o.y,i.xh,s.h+dy))}else{o.x=Math.max(0,Math.min(C-o.w,s.x+dx));o.y=Math.max(0,Math.min(R-o.h,s.y+dy))}
+if(rs){// Ecke/Kante: die gegenueberliegende Seite bleibt stehen
+if(rs.includes('e'))o.w=Math.max(i.mw,Math.min(C-s.x,i.xw,s.w+dx));if(rs.includes('s'))o.h=Math.max(i.mh,Math.min(R-s.y,i.xh,s.h+dy));
+if(rs.includes('w')){const nw=Math.max(i.mw,Math.min(s.x+s.w,i.xw,s.w-dx));o.x=s.x+s.w-nw;o.w=nw}
+if(rs.includes('n')){const nh=Math.max(i.mh,Math.min(s.y+s.h,i.xh,s.h-dy));o.y=s.y+s.h-nh;o.h=nh}}else{o.x=Math.max(0,Math.min(C-o.w,s.x+dx));o.y=Math.max(0,Math.min(R-o.h,s.y+dy))}
 pos(d,o);d.querySelector('small').textContent=o.w+' × '+o.h;d.classList.toggle('bad',bad(o))};
 d.onpointerup=()=>{d.onpointermove=null;render()}}}
 // Breite w auf Widgets nach Gewicht verteilen, Mindestbreiten beachten
@@ -851,10 +943,10 @@ static void handleLayoutPage() {
                              String(screenH()));
   page.replace("%T_TITLE%", L("Layout", "Layout"));
   page.replace("%T_HELP%",
-               L("Inhalte oben an- oder abwählen. Kästen verschieben, an der roten Ecke in der Größe ändern. "
+               L("Inhalte oben an- oder abwählen. Kästen verschieben, an den roten Ecken oder an den Kanten in der Größe ändern. "
                  "„Automatisch anordnen“ verteilt die gewählten Inhalte lückenlos. „Vorschau“ zeigt das echte Bild, "
                  "ohne zu speichern. Neu hinzugefügte Inhalte (z. B. Preis-Chart) bekommen ihre Daten erst nach dem Speichern.",
-                 "Select widgets above. Drag boxes to move them, use the red corner to resize. “Arrange "
+                 "Select widgets above. Drag boxes to move them, use the red corners or the edges to resize. “Arrange "
                  "automatically” fills the screen without gaps. “Preview” shows the real image without saving. Newly added "
                  "widgets (e.g. the price chart) get their data after saving."));
   page.replace("%T_AUTO%", L("Automatisch anordnen", "Arrange automatically"));

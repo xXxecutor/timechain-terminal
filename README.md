@@ -150,8 +150,8 @@ außerdem, wenn das Display gleich oder gerade neu gezeichnet wird (dann antwort
 
 **Layout &amp; Farben**
 * **Ausrichtung und Kopfzeile:** Quer/hoch, Kurs und QR-Code in der Kopfzeile
-* **Layout:** Inhalte an-/abwählen, Kästen auf dem Raster verschieben und an der Ecke in der Größe
-  ändern; „Automatisch anordnen“ verteilt die gewählten Inhalte lückenlos
+* **Layout:** Inhalte an-/abwählen, Kästen auf dem Raster verschieben und an allen vier Ecken und
+  Kanten in der Größe ändern (die gegenüberliegende Seite bleibt stehen); „Automatisch anordnen“ verteilt die gewählten Inhalte lückenlos
 * **Vorschau** in voller Breite, aktualisiert sich bei jeder Änderung von Layout oder Farben
 * **Farben:** Vorlagen, einzelne Farben aufklappbar
 
@@ -166,7 +166,10 @@ außerdem, wenn das Display gleich oder gerade neu gezeichnet wird (dann antwort
   Nur frei wählbare Namen (Miner, Pool, Server) werden bei Platzmangel mit „..“ gekürzt.
 
 Ohne Passwort kann jeder im eigenen WLAN Einstellungen ändern und Firmware aufspielen.
-Das Passwort wird per HTTP Basic Auth übertragen, also unverschlüsselt im Heimnetz.
+Die Anmeldung läuft per HTTP-Digest: Das Passwort selbst geht nie im Klartext durchs Netz
+(Basic-Anmeldungen lehnt das Gerät ab). Die Seite selbst ist aber unverschlüsselt (HTTP):
+Inhalte und Formulare, also auch ein neu eingegebenes Passwort oder WLAN-Passwort, sind im
+Heimnetz mitlesbar. Echtes HTTPS mit gültigem Zertifikat ist für `.local`-Adressen nicht möglich.
 
 Während eines Bildwechsels (ca. 30 s) beantwortet das Gerät keine Anfragen, sie werden
 danach erledigt. Grund: Panel-Spannung und starker WLAN-Verkehr zusammen haben im Test

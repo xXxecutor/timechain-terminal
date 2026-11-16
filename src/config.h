@@ -22,7 +22,7 @@
 #define WIFI_HOSTNAME  "timechain-terminal"
 
 // Firmware-Version (Web-Oberflaeche, Info-Bildschirm, Web-Flasher)
-#define FW_VERSION "1.9.0"
+#define FW_VERSION "1.9.1"
 
 // ---------------------------------------------------------------------------
 // Datenquelle
