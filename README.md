@@ -7,6 +7,11 @@ Das Gerät läuft eigenständig: Es holt die Daten per WLAN direkt von
 Ein PC wird nur für die erste Installation gebraucht, danach reicht ein USB-Netzteil.
 Updates kommen über WLAN.
 
+**Installieren:** [Web-Flasher](https://xxxecutor.github.io/timechain-terminal/) in Chrome oder
+Edge öffnen, Gerät per USB anschließen, „Firmware installieren“. Updates:
+[Releases](https://github.com/xXxecutor/timechain-terminal/releases) →
+`timechain-terminal-<version>.bin` → auf der Geräte-Webseite unter System hochladen.
+
 ## Was angezeigt wird
 
 Oben steht immer die Kopfzeile (Logo, Zeitpunkt der Daten bzw. OFFLINE und optional der Kurs:
@@ -75,18 +80,19 @@ Die Werte stehen in [src/config.h](src/config.h) und lassen sich dort ändern.
 
 ## Installation ohne Programmierkenntnisse (Web-Flasher)
 
-Der Ordner [web-flasher/](web-flasher/) enthält eine fertige Installationsseite auf Basis von
-[ESP Web Tools](https://esphome.github.io/esp-web-tools/): Gerät per USB anschließen, Seite in
-Chrome oder Edge öffnen, „Firmware installieren“ klicken. Die Seite muss über HTTPS
-ausgeliefert werden, z. B. mit GitHub Pages (Ordner `web-flasher` veröffentlichen).
+Die Installationsseite **https://xxxecutor.github.io/timechain-terminal/** (Ordner
+[web-flasher/](web-flasher/), auf Basis von [ESP Web Tools](https://esphome.github.io/esp-web-tools/)):
+Gerät per USB anschließen, Seite in Chrome oder Edge am Computer öffnen, „Firmware installieren“
+klicken und bei der ersten Installation „Gerät löschen“ bestätigen. Fehlt unter Windows der
+Treiber für „USB-SERIAL CH340“, den CH340-Treiber des Herstellers WCH installieren.
 Zum lokalen Testen reicht `python -m http.server` im Ordner und `http://localhost:8000`.
 
 ## WLAN
 
 Beim ersten Start ohne gespeichertes WLAN öffnet das Gerät ein eigenes WLAN
-**„Timechain Terminal“** und zeigt die Anleitung auf dem Display:
+**„Timechain-Terminal“** und zeigt die Anleitung auf dem Display:
 
-1. Mit Handy/PC das WLAN „Timechain Terminal“ wählen
+1. Mit Handy/PC das WLAN „Timechain-Terminal“ wählen
 2. Die Einrichtungsseite öffnet sich automatisch (sonst `http://192.168.4.1`)
 3. „Configure WiFi“, dein **2,4-GHz**-WLAN wählen, Passwort eingeben.
    Darunter lassen sich die Sprache und optional ein eigener mempool-Server wählen.
@@ -96,9 +102,10 @@ Der ESP32 kann kein 5-GHz-WLAN.
 
 Nach der Einrichtung zeigt das Display kurz die Adresse der Geräte-Webseite.
 
-**WLAN wechseln:** auf der Geräte-Webseite „WLAN-Daten löschen“, beim Einschalten die
-BOOT-Taste der Platine gedrückt halten, oder per USB den Befehl `wifi-reset` senden.
-Danach startet wieder das Einrichtungs-WLAN.
+**WLAN wechseln:** auf der Geräte-Webseite unter System „Mit anderem WLAN verbinden“ (siehe
+unten). Alle WLAN-Daten löschen und das Einrichtungs-WLAN starten: auf der Webseite „WLAN-Daten
+löschen“, beim Einschalten die BOOT-Taste der Platine gedrückt halten (falls vorhanden) oder per
+USB den Befehl `wifi-reset` senden.
 
 Fällt das WLAN aus, versucht das Gerät es weiter und zeigt in der Kopfzeile
 „OFFLINE“ mit dem Zeitpunkt der letzten Daten.
@@ -161,7 +168,7 @@ außerdem, wenn das Display gleich oder gerade neu gezeichnet wird (dann antwort
 * Prüfstand: `/test/overflow` zeichnet jedes Widget in jeder erlaubten Größe mit Extremwerten
   (7-stellige Blockhöhe, Gebühren über 1.000 sat/vB, 4 Miner mit langen Namen …), echten Daten
   und ohne Daten, auf Deutsch und Englisch, und meldet alles, was über den Rand geht oder
-  gekürzt wird, im Quer- und Hochformat (ca. 30.000 Fälle, 3 Minuten). Stand 1.9.0: 0 Überläufe,
+  gekürzt wird, im Quer- und Hochformat (ca. 30.000 Fälle, 3 Minuten). Stand 1.0.0: 0 Überläufe,
   0 Kürzungen.
   Nur frei wählbare Namen (Miner, Pool, Server) werden bei Platzmangel mit „..“ gekürzt.
 
@@ -178,7 +185,7 @@ an einem PC-USB-Anschluss einen Spannungseinbruch mit Neustart ausgelöst.
 ## Bauen und flashen
 
 Voraussetzung: Python mit PlatformIO (`pip install platformio`). Gerät per USB anschließen
-(erscheint als „USB-SERIAL CH340“, hier COM3).
+(erscheint als „USB-SERIAL CH340“, in den Beispielen COM3).
 
 ```bash
 python -m platformio run -t upload --upload-port COM3
@@ -206,16 +213,21 @@ das WLAN-Update nach `release/timechain-terminal-<version>.bin`.
 
 ## Original-Firmware wiederherstellen
 
-Vor dem ersten Flashen wurde der komplette Flash (4 MB) gesichert:
-`backup/original_firmware_GDP075FW1.bin`. Zurückspielen:
+Wer die Firmware des Geräts behalten will, sichert vor dem ersten Flashen den kompletten
+Flash (4 MB). Der Ordner `backup/` wird nie hochgeladen (`.gitignore`), denn die Sicherung kann
+WLAN-Zugangsdaten enthalten.
 
 ```bash
-python -m esptool --port COM3 --baud 460800 write-flash 0 backup/original_firmware_GDP075FW1.bin
+python -m esptool --port COM3 --baud 460800 read-flash 0 0x400000 backup/original.bin
 ```
 
-Hinweis: Diese Sicherung enthielt nicht die Werks-Firmware von Good Display, sondern ein
-früher aufgespieltes Arduino-Testprogramm („7.5" tri-color e-Paper Test“). Eine
-nachgebaute Werks-Firmware gibt es im Projekt
+Zurückspielen:
+
+```bash
+python -m esptool --port COM3 --baud 460800 write-flash 0 backup/original.bin
+```
+
+Eine nachgebaute Werks-Firmware von Good Display gibt es im Projekt
 [iaon/GDP075FW1](https://github.com/iaon/GDP075FW1/releases).
 
 ## Technische Details
@@ -272,16 +284,15 @@ offenzulegenden Quellcode. Vorbereitet sind `.gitignore` (u. a. **`backup/` wird
 hochgeladen**, die Flash-Sicherung kann WLAN-Zugangsdaten enthalten), `LICENSE` (GPL-3.0) und
 der Workflow [.github/workflows/release.yml](.github/workflows/release.yml).
 
-Einmalig:
-1. Auf GitHub ein öffentliches Repository anlegen und diesen Ordner hochladen.
-2. Im Repository: Settings → Pages → Source: „GitHub Actions“.
+Einmalig: Repository öffentlich, Settings → Pages → Source: „GitHub Actions“ (GitHub Pages
+gibt es im kostenlosen Konto nur für öffentliche Repositories).
 
 Für jede neue Version:
-1. `FW_VERSION` in `src/config.h` erhöhen.
-2. Einen passenden Tag pushen, z. B. `v1.2.0`.
-3. Der Workflow baut die Firmware, hängt `timechain-terminal-<version>.bin` an das Release
-   (für das Update über die Geräte-Webseite) und veröffentlicht den Web-Flasher unter
-   `https://<benutzer>.github.io/<repo>/`.
+1. `FW_VERSION` in `src/config.h` erhöhen (Schema `MAJOR.MINOR.PATCH`), committen und pushen.
+2. Einen passenden Tag pushen, z. B. `git tag v1.1.0` und `git push origin v1.1.0`.
+3. Der Workflow prüft, dass Tag und `FW_VERSION` übereinstimmen, baut die Firmware, hängt
+   `timechain-terminal-<version>.bin` an das Release (für das Update über die Geräte-Webseite)
+   und veröffentlicht den Web-Flasher unter https://xxxecutor.github.io/timechain-terminal/.
 
 ## Lizenz
 
