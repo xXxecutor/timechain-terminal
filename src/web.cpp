@@ -806,8 +806,9 @@ static const char EDITOR[] PROGMEM = R"(
 .thg{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:16px;align-items:start}
 @media(max-width:720px){.thg{grid-template-columns:1fr}}
 .pvbox{margin:0 0 6px}details{margin:10px 0}summary{cursor:pointer;color:var(--acc);font-weight:600}
-#roles{display:grid;grid-template-columns:1fr;gap:2px;margin-top:6px}
-.rl{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px}
+#roles{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:6px 10px;margin-top:8px}
+.rl{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:13px;background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:6px 10px}
+.rl:hover{border-color:var(--acc)}
 .sw{display:inline-flex;gap:4px;flex:none}
 .sw label{margin:0;display:inline-block;width:18px;height:18px;border-radius:50%;border:2px solid #888;cursor:pointer;position:relative}
 .sw input{position:absolute;opacity:0}.sw label:has(input:checked){outline:2px solid var(--acc);outline-offset:1px}
