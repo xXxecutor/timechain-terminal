@@ -1,6 +1,7 @@
 // Einstellungen (NVS), Layout-Text und Adresse des mempool-Servers
 #include "app.h"
 #include <Preferences.h>
+#include <MD5Builder.h>
 
 Settings cfg;
 Layout layout;
@@ -201,11 +202,29 @@ bool parseNodeUrl(String in, Node &out) {
   return true;
 }
 
+String digestHA1(const String &password) {
+  MD5Builder m;
+  m.begin();
+  m.add(String("admin:") + AUTH_REALM + ":" + password);
+  m.calculate();
+  return m.toString();
+}
+
+bool isHA1(const String &s) {
+  if (s.length() != 32) return false;
+  for (char c : s)
+    if (!isdigit(c) && (c < 'a' || c > 'f')) return false;
+  return true;
+}
+
 void loadSettings() {
   Preferences p;
   p.begin("btcterm", true);
   cfg.nodeUrl = p.getString("node", DEFAULT_NODE_URL);
   cfg.password = p.getString("pw", "");
+  // bis 1.0.1 stand das Passwort im Klartext im NVS: jetzt nur noch HA1 (siehe unten)
+  const bool migratePw = cfg.password.length() && !isHA1(cfg.password);
+  if (migratePw) cfg.password = digestHA1(cfg.password);
   cfg.layout = p.getString("layout", DEFAULT_LAYOUT);
   cfg.layoutP = p.getString("layoutP", DEFAULT_LAYOUT_P);
   cfg.rotation = p.getUChar("rot", 0) & 3;
@@ -219,6 +238,13 @@ void loadSettings() {
   cfg.headerPrice = p.getBool("hdrPrice", true);
   lang = (Lang)p.getUChar("lang", LANG_DE);
   p.end();
+  if (migratePw) {
+    Preferences w;
+    w.begin("btcterm", false);
+    w.putString("pw", cfg.password);
+    w.end();
+    Serial.println("[cfg] Passwort in HA1-Wert umgewandelt");
+  }
   if (!parseNodeUrl(cfg.nodeUrl, node)) parseNodeUrl(DEFAULT_NODE_URL, node);
   if (!parseLayout(activeLayoutText(), layout)) {
     activeLayoutText() = defaultLayoutText();

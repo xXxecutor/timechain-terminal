@@ -94,7 +94,7 @@ bool partEnabled(WidgetId id, int part);
 // ---------------------------------------------------------------------------
 struct Settings {
   String nodeUrl = DEFAULT_NODE_URL;
-  String password;              // leer = Webseite ohne Passwort
+  String password;              // HA1 = md5("admin:" AUTH_REALM ":" Passwort), leer = Webseite ohne Passwort
   String layout;                // Layout-Text Querformat
   String layoutP;               // Layout-Text Hochformat
   uint8_t rotation = 0;         // 0 = quer, 1 = hoch (90°), 2 = quer gedreht (180°), 3 = hoch (270°)
@@ -119,6 +119,10 @@ const char *defaultLayoutText();
 void loadSettings();
 void saveSettings();
 void resetPasswordAndWifi();
+// Digest-Anmeldung: Bereich (realm) und daraus der gespeicherte Wert HA1 = md5("admin:realm:passwort")
+#define AUTH_REALM PRODUCT_NAME
+String digestHA1(const String &password);
+bool isHA1(const String &s);
 
 // ---------------------------------------------------------------------------
 // Datenquelle

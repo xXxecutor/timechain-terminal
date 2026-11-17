@@ -31,7 +31,7 @@ static void flash(const String &m, bool err = false) {
 // Anmeldung per HTTP-Digest (RFC 7616, MD5, qop=auth): Das Passwort geht nie im Klartext durchs Netz,
 // Basic-Anmeldungen werden abgelehnt. Die Nonce liegt dauerhaft im NVS, damit der Browser nach
 // einem Neustart des Geraets nicht erneut fragt.
-static const char REALM[] = PRODUCT_NAME;
+static const char REALM[] = AUTH_REALM;
 static String digestNonce, digestOpaque;
 
 static String md5hex(const String &s) {
@@ -99,7 +99,7 @@ static bool authorized() {
     return false;
   const String uri = authParam(h, "uri"), resp = authParam(h, "response"), qop = authParam(h, "qop");
   if (!uri.startsWith(server.uri())) return false;  // Antwort gehoert zu einer anderen Adresse
-  const String ha1 = md5hex(String("admin:") + REALM + ":" + cfg.password);
+  const String &ha1 = cfg.password;  // gespeichert ist nur HA1, nie das Passwort
   const String ha2 = md5hex(String(methodName()) + ":" + uri);
   String expect;
   if (qop == "auth")
@@ -308,6 +308,33 @@ static String opt(const String &value, const String &label, bool sel) {
   return "<option value=\"" + value + "\"" + (sel ? " selected" : "") + ">" + label + "</option>";
 }
 
+static const char MD5_JS[] PROGMEM = R"md(function md5(s){s=unescape(encodeURIComponent(s));const K=[],R=[7,12,17,22,5,9,14,20,4,11,16,23,6,10,15,21],w=[],n=s.length;
+for(let i=0;i<64;i++)K[i]=Math.floor(Math.abs(Math.sin(i+1))*4294967296)|0;
+for(let i=0;i<n;i++)w[i>>2]|=s.charCodeAt(i)<<(i%4*8);w[n>>2]|=128<<(n%4*8);const L=((n+8>>6)+1)*16;w[L-2]=n*8;
+let a=0x67452301,b=0xefcdab89|0,c=0x98badcfe|0,d=0x10325476;
+for(let i=0;i<L;i+=16){let A=a,B=b,C=c,D=d;for(let j=0;j<64;j++){let f,g;
+if(j<16){f=B&C|~B&D;g=j}else if(j<32){f=D&B|~D&C;g=(5*j+1)%16}else if(j<48){f=B^C^D;g=(3*j+5)%16}else{f=C^(B|~D);g=7*j%16}
+const t=D,x=(A+f+K[j]+(w[i+g]|0))|0,h=R[(j>>4)*4+j%4];D=C;C=B;B=(B+(x<<h|x>>>32-h))|0;A=t}
+a=a+A|0;b=b+B|0;c=c+C|0;d=d+D|0}
+return[a,b,c,d].map(v=>{let h='';for(let i=0;i<4;i++)h+=(v>>>i*8&255).toString(16).padStart(2,'0');return h}).join('')})md";
+
+// Passwort-Formular: der Browser rechnet HA1 = md5("admin:realm:passwort") und schickt nur diesen Wert
+static const char PW_JS[] PROGMEM = R"pw(<script>(()=>{
+%MD5%
+const f=document.getElementById('pwf'),a=document.getElementById('pw1'),b=document.getElementById('pw2'),h=document.getElementById('ha1');
+f.onsubmit=e=>{if(a.value!==b.value){e.preventDefault();alert('%T_MISMATCH%');return}
+if(a.value&&a.value.length<6){e.preventDefault();alert('%T_SHORT%');return}
+h.value=a.value?md5('admin:%REALM%:'+a.value):'';a.value=b.value=''}})();</script>)pw";
+
+static String pwScript() {
+  String s = FPSTR(PW_JS);
+  s.replace("%MD5%", FPSTR(MD5_JS));
+  s.replace("%REALM%", AUTH_REALM);
+  s.replace("%T_MISMATCH%", L("Die Passwörter stimmen nicht überein.", "The passwords do not match."));
+  s.replace("%T_SHORT%", L("Bitte mindestens 6 Zeichen.", "Please use at least 6 characters."));
+  return s;
+}
+
 static void handleRoot() {
   if (!guard()) return;
   String b;
@@ -376,10 +403,11 @@ static void handleRoot() {
   // Sicherheit
   b += String("<section><h2>") + L("Sicherheit", "Security") + "</h2><h3>" +
        L("Passwort für diese Seite", "Password for this page") +
-       "</h3><form method=\"post\" action=\"/password\"><div class=\"row\"><div><label>" +
+       "</h3><form method=\"post\" action=\"/password\" id=\"pwf\"><input type=\"hidden\" name=\"ha1\" id=\"ha1\">"
+       "<div class=\"row\"><div><label>" +
        L("Neues Passwort", "New password") +
-       "</label><input type=\"password\" name=\"pw\" autocomplete=\"new-password\"></div><div><label>" +
-       L("Wiederholen", "Repeat") + "</label><input type=\"password\" name=\"pw2\" autocomplete=\"new-password\"></div></div>" +
+       "</label><input type=\"password\" id=\"pw1\" autocomplete=\"new-password\"></div><div><label>" +
+       L("Wiederholen", "Repeat") + "</label><input type=\"password\" id=\"pw2\" autocomplete=\"new-password\"></div></div>" +
        "<p class=\"hint\">" +
        (cfg.password.length() ? L("Passwort ist gesetzt (Benutzer <code>admin</code>). Beide Felder leer lassen und "
                                   "speichern entfernt es.",
@@ -389,9 +417,13 @@ static void handleRoot() {
                                   "<code>admin</code>.",
                                   "No password set: anyone on your Wi-Fi can change settings. User name is "
                                   "<code>admin</code>.")) +
-       L(" Vergessen? Gerät per USB an einen PC anschließen und im seriellen Monitor <code>password-reset</code> senden.",
-         " Forgot it? Connect the device to a PC via USB and send <code>password-reset</code> in a serial monitor.") +
-       "</p><button>" + L("Speichern", "Save") + "</button></form></section>";
+       L(" Das Passwort verlässt den Browser nie: Er schickt nur einen daraus berechneten Wert, und "
+         "das Gerät speichert nur diesen. Vergessen? Gerät per USB an einen PC anschließen und im seriellen "
+         "Monitor <code>password-reset</code> senden.",
+         " The password never leaves your browser: it only sends a value derived from it, and the device stores "
+         "only that. Forgot it? Connect the device to a PC via USB and send <code>password-reset</code> in a "
+         "serial monitor.") +
+       "</p><button>" + L("Speichern", "Save") + "</button></form></section>" + pwScript();
 
   // System: Firmware und WLAN
   b += String("<section><h2>System</h2><h3>") + L("Firmware-Update", "Firmware update") +
@@ -630,6 +662,23 @@ static void handleNode() {
 
 static void handlePassword() {
   if (!guard()) return;
+  // Normalfall: der Browser schickt nur HA1 (leer = Passwort entfernen)
+  if (server.hasArg("ha1")) {
+    String h = server.arg("ha1");
+    h.toLowerCase();
+    if (h.length() && !isHA1(h)) {
+      flash(L("Ungültiger Wert.", "Invalid value."), true);
+      return redirect();
+    }
+    cfg.password = h;
+    saveSettings();
+    loadDigestNonce();
+    flash(h.length() ? L("Passwort gesetzt. Benutzername: admin", "Password set. User name: admin")
+                     : L("Passwort entfernt.", "Password removed."));
+    Serial.printf("[cfg] Passwort %s\n", h.length() ? "gesetzt" : "entfernt");
+    return redirect();
+  }
+  // ohne JavaScript: Klartext-Felder (werden sofort in HA1 umgerechnet)
   String a = server.arg("pw"), b = server.arg("pw2");
   if (a != b) {
     flash(L("Die Passwörter stimmen nicht überein.", "The passwords do not match."), true);
@@ -639,7 +688,7 @@ static void handlePassword() {
     flash(L("Bitte mindestens 6 Zeichen.", "Please use at least 6 characters."), true);
     return redirect();
   }
-  cfg.password = a.substring(0, 64);
+  cfg.password = a.length() ? digestHA1(a.substring(0, 64)) : String("");
   saveSettings();
   flash(a.length() ? L("Passwort gesetzt. Benutzername: admin", "Password set. User name: admin")
                    : L("Passwort entfernt.", "Password removed."));

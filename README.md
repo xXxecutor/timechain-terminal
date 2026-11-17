@@ -168,10 +168,14 @@ außerdem, wenn das Display gleich oder gerade neu gezeichnet wird (dann antwort
 * Nur frei wählbare Namen (Miner, Pool, Server) werden bei Platzmangel mit „..“ gekürzt.
 
 Ohne Passwort kann jeder im eigenen WLAN Einstellungen ändern und Firmware aufspielen.
-Die Anmeldung läuft per HTTP-Digest: Das Passwort selbst geht nie im Klartext durchs Netz
-(Basic-Anmeldungen lehnt das Gerät ab). Die Seite selbst ist aber unverschlüsselt (HTTP):
-Inhalte und Formulare, also auch ein neu eingegebenes Passwort oder WLAN-Passwort, sind im
-Heimnetz mitlesbar. Echtes HTTPS mit gültigem Zertifikat ist für `.local`-Adressen nicht möglich.
+Die Anmeldung läuft per HTTP-Digest (Basic-Anmeldungen lehnt das Gerät ab). Das Passwort selbst
+geht nie durchs Netz, auch nicht beim Setzen: Der Browser berechnet daraus
+`HA1 = md5("admin:Timechain Terminal:<passwort>")` und schickt nur diesen Wert; das Gerät speichert
+nur HA1 (ältere Firmware speicherte das Passwort, es wird beim ersten Start umgewandelt). Wer HA1
+mitschneidet, könnte sich damit an diesem Gerät anmelden, erfährt aber nicht das Passwort.
+Die Seite selbst ist unverschlüsselt (HTTP): Inhalte und andere Formulare, z. B. ein neu
+eingegebenes WLAN-Passwort, sind im Heimnetz mitlesbar. Echtes HTTPS mit gültigem Zertifikat ist
+für `.local`-Adressen nicht möglich.
 
 Während eines Bildwechsels (ca. 30 s) beantwortet das Gerät keine Anfragen, sie werden
 danach erledigt. Grund: Panel-Spannung und starker WLAN-Verkehr zusammen haben im Test
@@ -202,7 +206,7 @@ Der Build `dev` enthält zusätzlich den Prüfstand `/test/overflow`: Er zeichne
 jeder erlaubten Größe mit Extremwerten (7-stellige Blockhöhe, Gebühren über 1.000 sat/vB,
 4 Miner mit langen Namen …), echten Daten und ohne Daten, auf Deutsch und Englisch, im Quer-
 und Hochformat (ca. 30.000 Fälle, 4 Minuten), und meldet alles, was über den Rand geht oder
-gekürzt wird. Stand 1.0.1: 0 Überläufe, 0 Kürzungen. Außerdem zeigt `/preview.bmp?data=extrem`
+gekürzt wird. Stand 1.0.2: 0 Überläufe, 0 Kürzungen. Außerdem zeigt `/preview.bmp?data=extrem`
 die Vorschau mit diesen Extremwerten. In der Firmware für Nutzer (Release, Web-Flasher) fehlt
 beides.
 
