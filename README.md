@@ -206,7 +206,7 @@ Der Build `dev` enthält zusätzlich den Prüfstand `/test/overflow`: Er zeichne
 jeder erlaubten Größe mit Extremwerten (7-stellige Blockhöhe, Gebühren über 1.000 sat/vB,
 4 Miner mit langen Namen …), echten Daten und ohne Daten, auf Deutsch und Englisch, im Quer-
 und Hochformat (ca. 30.000 Fälle, 4 Minuten), und meldet alles, was über den Rand geht oder
-gekürzt wird. Stand 1.0.2: 0 Überläufe, 0 Kürzungen. Außerdem zeigt `/preview.bmp?data=extrem`
+gekürzt wird. Stand 1.0.1: 0 Überläufe, 0 Kürzungen. Außerdem zeigt `/preview.bmp?data=extrem`
 die Vorschau mit diesen Extremwerten. In der Firmware für Nutzer (Release, Web-Flasher) fehlt
 beides.
 
