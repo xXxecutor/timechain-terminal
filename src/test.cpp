@@ -2,6 +2,7 @@
 // ohne Daten, auf Deutsch und Englisch. Gemeldet wird alles, was ueber den Rand des Widgets
 // hinaus gezeichnet oder mit ".." gekuerzt wird.  Aufruf: GET /test/overflow[?w=block]
 #include "app.h"
+#ifdef TT_DEVTOOLS  // nur im Entwickler-Build (pio run -e dev)
 
 static Data backup;
 
@@ -152,3 +153,5 @@ void popTestData() {
   data = pushedData;
   cfg.miners = pushedMiners;
 }
+
+#endif  // TT_DEVTOOLS

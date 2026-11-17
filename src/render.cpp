@@ -1835,6 +1835,7 @@ void refreshDisplay(void (*painter)()) {
   Serial.printf("[epd] Bild aktualisiert in %lu ms\n", millis() - t0);
 }
 
+#ifdef TT_DEVTOOLS
 // Pruefstand: Widget unsichtbar zeichnen und zaehlen, was ueber den Rand geht
 RenderCheck checkWidget(WidgetId id, int wCells, int hCells) {
   static CheckCanvas cc;
@@ -1859,6 +1860,7 @@ RenderCheck checkWidget(WidgetId id, int wCells, int hCells) {
   r.sample = cc.outside ? cc.sample : truncSample;
   return r;
 }
+#endif
 
 // ---------------------------------------------------------------------------
 // Info-Bildschirme

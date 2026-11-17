@@ -164,13 +164,8 @@ außerdem, wenn das Display gleich oder gerade neu gezeichnet wird (dann antwort
 
 * Maschinenlesbar: `/api/status` (JSON), `/api/events` (Ereignisse, GET/POST), `/preview.bmp` (aktuelles Bild; Parameter
   `l=<layout>`, `lang=en`, `theme=<farben>`, `rot=0..3`, `hdrqr=1`, `cur1=`/`cur2=` (0–6),
-  `screen=setup|info`, `data=extrem`)
-* Prüfstand: `/test/overflow` zeichnet jedes Widget in jeder erlaubten Größe mit Extremwerten
-  (7-stellige Blockhöhe, Gebühren über 1.000 sat/vB, 4 Miner mit langen Namen …), echten Daten
-  und ohne Daten, auf Deutsch und Englisch, und meldet alles, was über den Rand geht oder
-  gekürzt wird, im Quer- und Hochformat (ca. 30.000 Fälle, 3 Minuten). Stand 1.0.0: 0 Überläufe,
-  0 Kürzungen.
-  Nur frei wählbare Namen (Miner, Pool, Server) werden bei Platzmangel mit „..“ gekürzt.
+  `screen=setup|info`)
+* Nur frei wählbare Namen (Miner, Pool, Server) werden bei Platzmangel mit „..“ gekürzt.
 
 Ohne Passwort kann jeder im eigenen WLAN Einstellungen ändern und Firmware aufspielen.
 Die Anmeldung läuft per HTTP-Digest: Das Passwort selbst geht nie im Klartext durchs Netz
@@ -196,6 +191,20 @@ Serieller Monitor (Log, Befehle `refresh`, `info`, `password-reset`, `wifi-reset
 ```bash
 python -m platformio device monitor --port COM3
 ```
+
+### Entwickler-Build mit Prüfstand
+
+```bash
+python -m platformio run -e dev
+```
+
+Der Build `dev` enthält zusätzlich den Prüfstand `/test/overflow`: Er zeichnet jedes Widget in
+jeder erlaubten Größe mit Extremwerten (7-stellige Blockhöhe, Gebühren über 1.000 sat/vB,
+4 Miner mit langen Namen …), echten Daten und ohne Daten, auf Deutsch und Englisch, im Quer-
+und Hochformat (ca. 30.000 Fälle, 4 Minuten), und meldet alles, was über den Rand geht oder
+gekürzt wird. Stand 1.0.1: 0 Überläufe, 0 Kürzungen. Außerdem zeigt `/preview.bmp?data=extrem`
+die Vorschau mit diesen Extremwerten. In der Firmware für Nutzer (Release, Web-Flasher) fehlt
+beides.
 
 ### Release erstellen
 
@@ -243,7 +252,7 @@ Eine nachgebaute Werks-Firmware von Good Display gibt es im Projekt
 * Quellcode: `main.cpp` (Ablauf, WLAN, BOOT-Taste), `net.cpp` (Datenabruf), `render.cpp`
   (Zeichnen, Widgets, Vorschau, Prüf-Canvas, QR), `web.cpp` (Webseite, Editoren),
   `settings.cpp` (NVS, Layout, Farbrollen), `format.cpp` (Zahlen/Datum/Währungen),
-  `test.cpp` (Prüfstand), gemeinsame Typen in `app.h`
+  `test.cpp` (Prüfstand, nur im Build `dev`), gemeinsame Typen in `app.h`
 * QR-Code: `libqrcode` aus dem ESP-IDF (im Arduino-Core enthalten)
 * Treiber: GxEPD2 (`GxEPD2_750c_GDEM075F52`), Seitenweise gezeichnet (9,6 KB Puffer, da kein PSRAM).
   Die Vorschau zeichnet genauso streifenweise in einen eigenen Puffer und streamt ein BMP.

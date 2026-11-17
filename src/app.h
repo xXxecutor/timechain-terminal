@@ -269,7 +269,9 @@ String deviceUrl();             // http://<IP>
 
 // Pruefstand (render.cpp): zeichnet ein Widget unsichtbar und zaehlt, was ueber den Rand geht
 struct RenderCheck { uint32_t outside = 0; uint16_t truncs = 0, truncsOk = 0; String sample; };
+#ifdef TT_DEVTOOLS
 RenderCheck checkWidget(WidgetId id, int w, int h);
+#endif
 // Zeichnet das Layout unsichtbar: je Widget die gezeigten Teile und die Teile, fuer die es Daten gibt
 // chainSplit[2]: Teile der Blockkette, die in geminten [0] bzw. Mempool-Bloecken [1] Platz fanden
 void measureParts(const Layout &l, uint16_t *shown, uint16_t *haveData, uint16_t *chainSplit);
@@ -284,10 +286,12 @@ const char *eventText(const EventView &v);
 int eventLongestBuiltin();
 extern String historyTestText;      // Pruefstand: fester Text statt "heute" (leer = aus)
 
-// test.cpp
+// test.cpp (nur im Entwickler-Build)
+#ifdef TT_DEVTOOLS
 void streamOverflowReport(WebServer &server);
 void pushTestData();
 void popTestData();
+#endif
 
 // web.cpp
 void startWeb();

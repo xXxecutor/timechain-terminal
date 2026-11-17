@@ -742,10 +742,14 @@ static void handlePreview() {
   void (*painter)() = nullptr;
   if (server.arg("screen") == "setup") painter = setupScreenPainter();
   if (server.arg("screen") == "info") painter = drawInfoScreen;
+#ifdef TT_DEVTOOLS
   const bool extreme = server.arg("data") == "extrem";
   if (extreme) pushTestData();
+#endif
   streamPreviewBmp(c, pl, painter);
+#ifdef TT_DEVTOOLS
   if (extreme) popTestData();
+#endif
   lang = saved;
   themeOverride = "";
   Serial.printf("[web] Vorschau in %lu ms\n", millis() - t0);
@@ -1313,9 +1317,11 @@ void startWeb() {
   server.on("/api/events", HTTP_POST, handleEventsPost);
   server.on("/theme", HTTP_POST, handleTheme);
   server.on("/display", HTTP_POST, handleDisplay);
+#ifdef TT_DEVTOOLS
   server.on("/test/overflow", HTTP_GET, [] {
     if (guard()) streamOverflowReport(server);
   });
+#endif
   server.on("/node", HTTP_POST, handleNode);
   server.on("/password", HTTP_POST, handlePassword);
   server.on("/refresh", HTTP_POST, [] {
