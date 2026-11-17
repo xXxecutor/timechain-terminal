@@ -9,7 +9,7 @@ static const PartInfo P_BLOCK[] = {{"age", "Alter und Uhrzeit", "Age and time"},
                                    {"fees", "Gebührenspanne", "Fee range"},
                                    {"reward", "Belohnung", "Reward"},
                                    {"hash", "Block-Hash", "Block hash"}};
-static const PartInfo P_CHAIN[] = {{"median", "Median-Gebühr (Mempool-Blöcke)", "Median fee (mempool blocks)"},
+static const PartInfo P_CHAIN[] = {{"median", "Median-Gebühr (Mempool-Blöcke, steht immer oben)", "Median fee (mempool blocks, always on top)"},
                                    {"range", "Gebührenspanne", "Fee range"},
                                    {"tx", "Transaktionen", "Transactions"},
                                    {"time", "Alter bzw. Zeit bis zum Block", "Age or time until the block"},

@@ -923,16 +923,23 @@ static void drawCube(int x, int y, int w, int h, bool mined, int idx) {
     lines[n] = s, fonts[n] = f, names[n] = name, pids[n] = curPid;
     colors[n++] = c;
   };
-  // Inhalte in der eingestellten Reihenfolge (median nur im Mempool, Pool nur bei geminten Bloecken)
+  // Gemeinsames Zeilenraster fuer gemint und Mempool, damit jede Angabe in beiden Wuerfelarten auf
+  // derselben Hoehe steht: Zeile 0 ist der Kopf (Blockhoehe bzw. Median-Gebuehr), danach die Teile
+  // in der eingestellten Reihenfolge. Was es nur bei einer Art gibt (Pool), bleibt in der anderen
+  // als Leerzeile stehen.
   uint8_t ord[8];
   const int np = enabledParts(W_CHAIN, ord, 8);
-  if (mined) add(fmtInt(data.blocks[idx].height), cf.head, col(C_MINED_HEIGHT));
+  if (mined) {
+    add(fmtInt(data.blocks[idx].height), cf.head, col(C_MINED_HEIGHT));
+  } else {
+    const bool medianOn = partEnabled(W_CHAIN, 0);
+    curPid = medianOn ? 0 : -1;
+    add(medianOn ? cubeMedian(idx, medianStyle) : String(""), medianFont(medianStyle), fg);
+  }
   for (int j = 0; j < np; ++j) {
     curPid = ord[j];
     switch (ord[j]) {
-      case 0:
-        if (!mined) add(cubeMedian(idx, medianStyle), medianFont(medianStyle), fg);
-        break;
+      case 0: break;  // Median steht im Kopf
       case 1: add(cubeRange(mined, idx, rangeStyle), rangeFont(rangeStyle), fg); break;
       case 2: add(fmtInt(mined ? data.blocks[idx].txCount : data.mp[idx].nTx) + " Tx", cf.line, fg); break;
       case 3:
@@ -942,6 +949,7 @@ static void drawCube(int x, int y, int w, int h, bool mined, int idx) {
         break;
       case 4:
         if (mined) add(data.blocks[idx].pool, cf.small, fg, true);
+        else curPid = -1, add("", cf.small, fg);  // Leerzeile, damit die Zeilen darunter passen
         break;
     }
   }
