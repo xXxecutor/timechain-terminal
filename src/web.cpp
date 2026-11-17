@@ -1189,7 +1189,11 @@ static const char PARTS_HTML[] PROGMEM = R"pt(<section id="parts"><h2>%T_TITLE%<
 .pr button:disabled{opacity:.25}.pn{color:var(--mut);font-size:12px;min-width:18px;text-align:right}
 .pt{display:flex;flex-direction:column;line-height:1.25}.ps{font-size:12px;font-weight:600}
 .ps.y{color:var(--ok)}.ps.p{color:var(--acc)}.ps.n{color:var(--err)}.ps.d,.ps.f{color:var(--mut)}
-.pr.fix label{cursor:default}.pr.fix .pn{font-size:13px}</style>
+.pr.fix label{cursor:default}.pr.fix .pn{font-size:13px}
+.pgw{grid-column:1/-1}.cg{display:grid;grid-template-columns:auto 1fr 1fr;column-gap:14px}
+.cg>.pr{min-width:0}.cg .pn{padding-top:2px}.cgh{display:flex;flex-direction:column}
+.cg .pr label{min-width:0}.cg .pt{min-width:0;overflow-wrap:anywhere}
+@media(max-width:560px){.cg{column-gap:6px}.cg .pr{flex-wrap:wrap;gap:4px}.cg .pr label{flex:1 1 100%;gap:6px;font-size:14px}.cg .pr button{padding:1px 8px;font-size:12px}.cg h3{font-size:13px}}</style>
 <form method="post" action="/settings" id="pform"><input type="hidden" name="back" value="content"><input type="hidden" name="parts" id="pval">
 <div class="pg" id="pgrid"></div><button>%T_SAVE%</button> <button type="button" id="pdef" class="sec">%T_DEF%</button></form></section>
 <script>(()=>{const G=%GROUPS%,cur='%CUR%',T=%TEXTS%,st={};let M=null,tm=0;
@@ -1209,22 +1213,39 @@ const shown=ws.filter(w=>w.s>>pi&1),data=ws.filter(w=>w.d>>pi&1);
 if(shown.length==ws.length)return['y',T.yes];
 if(shown.length)return['p',T.part+': '+shown.map(w=>w.t).join(', ')];
 if(!data.length)return['d',T.nodata];return['n',T.noroom]}
-function draw(keep){grid.innerHTML='';G.forEach((g,gi)=>{const c=document.createElement('div');c.className='pgc';
-const h=document.createElement('h3');h.textContent=g.t;const info=document.createElement('div');info.className='pgi';
+// Blockkette: abgewaehlte Eintraege stehen am Ende, damit die Position der Zeile im Display entspricht
+const CH=['chain','chainmp'];
+function part(l){const a=l.filter(x=>x.on),b=l.filter(x=>!x.on);l.splice(0,l.length,...a,...b)}
+CH.forEach(k=>st[k]&&part(st[k]));
+function infoOf(gi,c){const info=document.createElement('div');info.className='pgi';
 if(M){const ws=wsOf(gi);if(ws.length)info.textContent=T.inl+' ('+M.o+'): '+ws.map(w=>w.t+' '+w.c).join(', ');
-else{info.textContent=T.notin+' ('+M.o+')';c.classList.add('out')}}c.append(h,info);
-if(g.k=='chainmp'){const hn=document.createElement('div');hn.className='pgi';hn.textContent=T.chainhint;c.append(hn)}
-const fx=document.createElement('div');fx.className='pr fix';fx.innerHTML='<label><span class="pn">🔒</span><span class="pt"><span></span><span class="ps f"></span></span></label>';
-fx.querySelector('.pt span').textContent=g.f;fx.querySelector('.ps').textContent=T.always;if(g.f)c.append(fx);
-const l=st[g.k];let n=g.k=='chain'?1:0;  // Blockkette: die Blockhöhe ist Zeile 1
-if(g.k=='chain')fx.querySelector('.pn').textContent='1.';l.forEach((it,i)=>{const r=document.createElement('div');r.className='pr'+(it.on?'':' off');
-const lab=document.createElement('label'),cb=document.createElement('input'),tx=document.createElement('span'),sp=document.createElement('span'),ps=document.createElement('span'),num=document.createElement('span');
-num.className='pn';num.textContent=it.on?++n+'.':'';cb.type='checkbox';cb.checked=it.on;cb.onchange=()=>{it.on=cb.checked;draw();measure()};
+else{info.textContent=T.notin+' ('+M.o+')';c.classList.add('out')}}return info}
+function fixRow(g){const fx=document.createElement('div');fx.className='pr fix';fx.innerHTML='<label><span class="pt"><span></span><span class="ps f"></span></span></label>';
+fx.querySelector('.pt span').textContent='🔒 '+g.f;fx.querySelector('.ps').textContent=T.always;return fx}
+// eine Zeile; numTxt = Nummer davor (leer in der Blockketten-Karte, dort gibt es eine eigene Spalte)
+function mkRow(g,gi,l,it,i,numTxt,chain){const r=document.createElement('div');r.className='pr'+(it.on?'':' off');
+const lab=document.createElement('label'),cb=document.createElement('input'),tx=document.createElement('span'),sp=document.createElement('span'),ps=document.createElement('span');
+if(numTxt!==null){const num=document.createElement('span');num.className='pn';num.textContent=numTxt;lab.append(num)}
+cb.type='checkbox';cb.checked=it.on;cb.onchange=()=>{it.on=cb.checked;if(chain)part(l);draw();measure()};
 tx.className='pt';sp.textContent=g.p.find(p=>p.k==it.k).t;ps.className='ps';tx.append(sp,ps);
 const pi=g.p.findIndex(p=>p.k==it.k),s=it.on?status(gi,pi):null;if(!it.on){ps.classList.add('f');ps.textContent=T.off}else if(s){ps.classList.add(s[0]);ps.textContent=s[1]}
-lab.append(num,cb,tx);r.append(lab);
+lab.append(cb,tx);r.append(lab);const en=chain?l.filter(x=>x.on).length:l.length;
 [['▲',-1],['▼',1]].forEach(([s,d])=>{const b=document.createElement('button');b.type='button';b.textContent=s;b.title=d<0?T.up:T.down;
-const j=i+d;b.disabled=j<0||j>=l.length;b.onclick=()=>{[l[i],l[j]]=[l[j],l[i]];draw();measure()};r.append(b)});c.append(r)});grid.append(c)})}
+const j=i+d;b.disabled=(chain&&!it.on)||j<0||j>=en;b.onclick=()=>{[l[i],l[j]]=[l[j],l[i]];draw();measure()};r.append(b)});return r}
+function chainCard(){const gm=G.findIndex(g=>g.k=='chain'),gp=G.findIndex(g=>g.k=='chainmp'),c=document.createElement('div');c.className='pgc pgw';
+const cg=document.createElement('div');cg.className='cg';cg.append(document.createElement('span'));
+[gm,gp].forEach(gi=>{const hd=document.createElement('div');hd.className='cgh';const h=document.createElement('h3');h.textContent=G[gi].t;hd.append(h,infoOf(gi,c));cg.append(hd)});
+const lm=st.chain,lp=st.chainmp,rows=Math.max(1+lm.length,lp.length);
+for(let r=0;r<rows;r++){const left=r?lm[r-1]:null,right=lp[r];
+const nc=document.createElement('div');nc.className='pr';const nn=document.createElement('span');nn.className='pn';
+nn.textContent=(r==0||(left&&left.on)||(right&&right.on))?(r+1)+'.':'';nc.append(nn);cg.append(nc);
+cg.append(r==0?fixRow(G[gm]):left?mkRow(G[gm],gm,lm,left,r-1,null,true):document.createElement('div'));
+cg.append(right?mkRow(G[gp],gp,lp,right,r,null,true):document.createElement('div'))}
+const hn=document.createElement('div');hn.className='pgi';hn.style.marginTop='6px';hn.textContent=T.chainhint;c.append(cg,hn);return c}
+function draw(keep){grid.innerHTML='';G.forEach((g,gi)=>{if(g.k=='chainmp')return;if(g.k=='chain'){grid.append(chainCard());return}
+const c=document.createElement('div');c.className='pgc';const h=document.createElement('h3');h.textContent=g.t;c.append(h,infoOf(gi,c));
+if(g.f){const fx=fixRow(g);c.append(fx)}
+const l=st[g.k];let n=0;l.forEach((it,i)=>c.append(mkRow(g,gi,l,it,i,it.on?++n+'.':'',false)));grid.append(c)})}
 draw();measure();
 document.getElementById('pform').onsubmit=()=>{document.getElementById('pval').value=val()};
 document.getElementById('pdef').onclick=()=>{if(!confirm(T.defq))return;G.forEach(g=>{st[g.k]=g.p.map(p=>({k:p.k,on:true}))});draw();measure()};})();</script>)pt";
@@ -1323,7 +1344,7 @@ static void handleContentPage() {
                L("{\"legend\":\"Neben jedem Eintrag steht, ob er im aktuellen Layout zu sehen ist: grün = sichtbar, "
                  "orange = nur in einem Teil der Kacheln, rot = kein Platz (Kachel vergrößern oder Eintrag nach oben "
                  "schieben), grau = keine Daten oder ausgeblendet. Die Anzeige rechnet mit der Auswahl hier, auch "
-                 "bevor sie gespeichert ist.\",\"yes\":\"✓ sichtbar\",\"chainhint\":\"Gleiche Nummer wie bei den geminten Blöcken = gleiche Höhe im Display.\",\"part\":\"◐ nur in\",\"noroom\":\"✗ kein "
+                 "bevor sie gespeichert ist.\",\"yes\":\"✓ sichtbar\",\"chainhint\":\"Jede Zeilennummer steht im Display in beiden Würfelarten auf derselben Höhe. Abgewählte Einträge rücken ans Ende.\",\"part\":\"◐ nur in\",\"noroom\":\"✗ kein "
                  "Platz\",\"nodata\":\"keine Daten\",\"off\":\"ausgeblendet\",\"always\":\"immer sichtbar\","
                  "\"inl\":\"Im Layout\",\"notin\":\"Nicht im aktuellen Layout\",\"up\":\"nach oben (wichtiger)\","
                  "\"down\":\"nach unten (weniger wichtig)\",\"defq\":\"Alle Kacheln auf die Standard-Inhalte "
@@ -1331,7 +1352,7 @@ static void handleContentPage() {
                  "{\"legend\":\"Each entry shows whether it is visible in the current layout: green = visible, "
                  "orange = only in some of the tiles, red = no room (enlarge the tile or move the entry up), "
                  "grey = no data or hidden. The check uses the selection here, even before it is saved.\","
-                 "\"yes\":\"✓ visible\",\"chainhint\":\"Same number as for the mined blocks = same height on the display.\",\"part\":\"◐ only in\",\"noroom\":\"✗ no room\",\"nodata\":\"no "
+                 "\"yes\":\"✓ visible\",\"chainhint\":\"Each row number appears at the same height in both kinds of cubes on the display. Unchecked entries move to the end.\",\"part\":\"◐ only in\",\"noroom\":\"✗ no room\",\"nodata\":\"no "
                  "data\",\"off\":\"hidden\",\"always\":\"always visible\",\"inl\":\"In layout\",\"notin\":\"Not "
                  "in the current layout\",\"up\":\"up (more important)\",\"down\":\"down (less important)\","
                  "\"defq\":\"Reset all tiles to the default contents? (Applied when you save.)\"}"));
