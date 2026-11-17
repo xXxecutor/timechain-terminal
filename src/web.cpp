@@ -16,6 +16,9 @@ static bool webStarted = false;
 
 // Aenderungen, die das Bild betreffen, uebernimmt die Hauptschleife (nicht mitten im Zeichnen)
 bool settingsPending = false;
+bool fwInstallPending = false;
+uint32_t fwInstallAt = 0;
+String fwInstallError;
 Lang pendingLang = LANG_DE;
 Layout pendingLayout;
 
@@ -214,7 +217,9 @@ function poll(){const c=new AbortController(),t=setTimeout(()=>c.abort(),6000);
 fetch('/api/status',{signal:c.signal,cache:'no-store'}).then(r=>r.json()).then(j=>{clearTimeout(t);fails=0;
 if(renders!==null&&j.renders>renders){quiet=Date.now()+20000;toast(T.done,'',5000,'tdisp');document.querySelectorAll('img.shot[data-live]').forEach(i=>{i._o=null;i._m=0;i.src='/preview.bmp?t='+Date.now()})}
 else if(j.pending)toast(T.soon,'busy',0,'tdisp');else if(busy)hide(document.getElementById('tdisp'));
-busy=j.pending;renders=j.renders}).catch(()=>{clearTimeout(t);fails++;
+busy=j.pending;renders=j.renders;
+if(j.update&&!document.getElementById('fmsg')){let seen='';try{seen=sessionStorage.getItem('ttupd')}catch(e){}
+if(seen!==j.latest){try{sessionStorage.setItem('ttupd',j.latest)}catch(e){}toast((en?'Update to version ':'Update auf Version ')+j.latest+(en?' available – install it under System.':' verfügbar – unter System installieren.'),'',12000,'tupd')}}}).catch(()=>{clearTimeout(t);fails++;
 if(renders!==null&&Date.now()>quiet&&(busy||fails>=2)){toast(T.busy,'busy',0,'tdisp');busy=true}})
 .finally(()=>setTimeout(poll,document.hidden?15000:3000))}
 poll()})();
@@ -426,16 +431,39 @@ static void handleRoot() {
        "</p><button>" + L("Speichern", "Save") + "</button></form></section>" + pwScript();
 
   // System: Firmware und WLAN
-  b += String("<section><h2>System</h2><h3>") + L("Firmware-Update", "Firmware update") +
-       "</h3><form method=\"post\" action=\"/update\" enctype=\"multipart/form-data\" "
+  b += String("<section><h2>System</h2><h3 id=\"fw\">") + L("Firmware", "Firmware") + "</h3><p>" +
+       L("Installiert: Version ", "Installed: version ") + FW_VERSION + ". ";
+  const String latest = latestFirmware();
+  const String relUrl = String("https://github.com/") + FW_REPO + "/releases";
+  if (firmwareUpdateAvailable()) {
+    b += String("<b>") + L("Neue Version ", "New version ") + latest + L(" verfügbar", " available") +
+         "</b> (<a href=\"" + relUrl + "/tag/v" + latest + "\" target=\"_blank\" rel=\"noopener\">" +
+         L("Änderungen", "changes") + "</a>).</p><form method=\"post\" action=\"/fw-install\" "
+         "onsubmit=\"var b=this.querySelector('button');b.disabled=true;b.textContent='…'\"><button>" +
+         L("Version ", "Install version ") + latest + L(" installieren", "") + "</button><p class=\"hint\">" +
+         L("Das Gerät lädt die Firmware direkt von GitHub und startet danach neu (1–2 Minuten). Einstellungen und "
+           "WLAN bleiben erhalten.",
+           "The device downloads the firmware directly from GitHub and then restarts (1–2 minutes). Settings and "
+           "Wi-Fi are kept.") +
+         "</p></form>";
+  } else {
+    b += (latest.length() ? String(L("Das ist die neueste Version.", "This is the latest version."))
+                          : String(L("Neueste Version noch nicht bekannt.", "Latest version not known yet."))) +
+         "</p><form method=\"post\" action=\"/fw-check\"><button class=\"sec\">" +
+         L("Nach Updates suchen", "Check for updates") + "</button><p class=\"hint\">" +
+         L("Das Gerät fragt außerdem alle 6 Stunden selbst bei GitHub nach.",
+           "The device also checks GitHub by itself every 6 hours.") +
+         "</p></form>";
+  }
+  b += String("<details><summary>") + L("Firmware-Datei selbst hochladen", "Upload a firmware file yourself") +
+       "</summary><form method=\"post\" action=\"/update\" enctype=\"multipart/form-data\" "
        "onsubmit=\"var b=this.querySelector('button');b.disabled=true;b.textContent='…'\">"
        "<input type=\"file\" name=\"fw\" accept=\".bin\" required><button>" +
        L("Installieren", "Install") + "</button><p class=\"hint\">" +
-       L("Installiert ist Version " FW_VERSION ". Datei <code>timechain-terminal-….bin</code> aus dem Release wählen; "
-         "Einstellungen und WLAN bleiben erhalten.",
-         "Installed version: " FW_VERSION ". Choose <code>timechain-terminal-….bin</code> from the release; settings "
-         "and Wi-Fi are kept.") +
-       "</p></form><h3>WLAN</h3>";
+       L("Datei <code>timechain-terminal-….bin</code> aus den <a href=\"", "File <code>timechain-terminal-….bin</code> from the <a href=\"") +
+       relUrl + "\" target=\"_blank\" rel=\"noopener\">Releases</a>" +
+       L("; Einstellungen und WLAN bleiben erhalten.", "; settings and Wi-Fi are kept.") +
+       "</p></form></details><h3>WLAN</h3>";
   {
     String wf = FPSTR(WIFI_HTML);
     wf.replace("%CUR%", esc(WiFi.SSID()) + " (" + String(WiFi.RSSI()) + " dBm)");
@@ -470,6 +498,44 @@ static void handleRoot() {
          "Or forget all Wi-Fi data: the device then opens the Wi-Fi »" WIFI_AP_NAME "« for setup again.") +
        "</p><button class=\"sec\">" + L("WLAN-Daten löschen", "Forget Wi-Fi") + "</button></form></section>";
   sendPage(b, 0);
+}
+
+// Ein-Klick-Update: Warteseite fragt den Status ab, bis die neue Version laeuft oder ein Fehler kommt
+static const char FW_WAIT_HTML[] PROGMEM = R"fw(<section><h2>Firmware</h2><p id="fmsg">%T_RUN%</p><p class="hint" id="fhint">%T_INFO%</p>
+<p><a href="/" id="fhome" hidden>%T_HOME%</a></p></section>
+<script>(()=>{const m=document.getElementById('fmsg'),h=document.getElementById('fhint'),home=document.getElementById('fhome'),t0=Date.now();
+function done(msg,cls,hint){m.textContent=msg;m.className=cls||'';h.textContent=hint||'';home.hidden=false}
+function tick(){const c=new AbortController();setTimeout(()=>c.abort(),5000);
+fetch('/api/status',{signal:c.signal,cache:'no-store'}).then(r=>r.json()).then(j=>{
+if(j.version=='%VER%')return done('%T_OK%');
+if(!j.fwBusy&&j.fwErr)return done(j.fwErr,'bad','%T_KEEP%');
+setTimeout(tick,3000)}).catch(()=>{if(Date.now()-t0>240000)return done('%T_SLOW%','bad');setTimeout(tick,3000)})}
+setTimeout(tick,4000)})();</script>)fw";
+
+static void handleFwInstall() {
+  if (!guard()) return;
+  if (!firmwareUpdateAvailable()) {
+    flash(L("Es gibt keine neuere Version.", "There is no newer version."), true);
+    return redirect("/#fw");
+  }
+  fwInstallError = "";
+  fwInstallPending = true;
+  fwInstallAt = millis();
+  String p = FPSTR(FW_WAIT_HTML);
+  p.replace("%T_RUN%", String(L("Version ", "Version ")) + latestFirmware() +
+                           L(" wird von GitHub geladen und installiert …", " is being downloaded from GitHub and installed …"));
+  p.replace("%T_INFO%", L("Das dauert 1–2 Minuten; danach startet das Gerät neu. Diese Seite meldet sich, "
+                          "sobald es wieder erreichbar ist.",
+                          "This takes 1–2 minutes; then the device restarts. This page reports back as soon as "
+                          "it can be reached again."));
+  p.replace("%T_OK%", String(L("Version ", "Version ")) + latestFirmware() + L(" ist installiert.", " is installed."));
+  p.replace("%T_KEEP%", String(L("Die bisherige Version ", "The previous version ")) + FW_VERSION +
+                            L(" läuft unverändert weiter.", " keeps running unchanged."));
+  p.replace("%T_SLOW%", L("Das Gerät antwortet nicht mehr. Bitte die Seite in ein paar Minuten neu laden.",
+                          "The device does not respond. Please reload the page in a few minutes."));
+  p.replace("%T_HOME%", L("Zur Übersicht", "To the overview"));
+  p.replace("%VER%", latestFirmware());
+  sendPage(p, 0);
 }
 
 // WLAN suchen (asynchron: erster Aufruf startet, folgende liefern das Ergebnis)
@@ -1343,6 +1409,10 @@ static void handleStatusJson() {
   d["heap"] = ESP.getFreeHeap();
   d["uptime"] = millis() / 1000;
   d["renders"] = renderCount;
+  d["latest"] = latestFirmware();
+  d["update"] = firmwareUpdateAvailable();
+  d["fwBusy"] = fwInstallPending;
+  d["fwErr"] = fwInstallError;
   d["pending"] = redrawPending();
   String out;
   serializeJson(d, out);
@@ -1380,6 +1450,15 @@ void startWeb() {
     redirect();
   });
   server.on("/update", HTTP_POST, handleUpdateDone, handleUpdateUpload);
+  server.on("/fw-check", HTTP_POST, [] {
+    if (!guard()) return;
+    if (!checkFirmwareNow()) flash(L("GitHub ist gerade nicht erreichbar.", "GitHub is not reachable right now."), true);
+    else if (firmwareUpdateAvailable())
+      flash(String(L("Neue Version ", "New version ")) + latestFirmware() + L(" verfügbar.", " available."));
+    else flash(L("Die Firmware ist aktuell.", "The firmware is up to date."));
+    redirect("/#fw");
+  });
+  server.on("/fw-install", HTTP_POST, handleFwInstall);
   server.on("/api/wifi-scan", HTTP_GET, handleWifiScan);
   server.on("/api/wifi-state", HTTP_GET, handleWifiState);
   server.on("/wifi-connect", HTTP_POST, handleWifiConnect);

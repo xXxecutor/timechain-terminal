@@ -345,6 +345,12 @@ void loop() {
   pumpWeb();
   // kurz warten, damit die Antwortseite noch beim Browser ankommt
   if (wsState == WS_PENDING && millis() - wsAt > 1500) doWifiSwitch();
+  // Ein-Klick-Update: kurz warten, damit die Warteseite noch ankommt; bei Erfolg folgt ein Neustart
+  if (fwInstallPending && millis() - fwInstallAt > 1500) {
+    fwInstallPending = false;
+    String err;
+    if (!installFirmwareUpdate(err)) fwInstallError = err;
+  }
   if (nodeChangePending) applyNodeChange();
   if (settingsPending) applySettings();
   if (bootPressed()) infoRequested = true;

@@ -1,5 +1,6 @@
 // Datenabruf: mempool-API (Keep-Alive), Preis-Chart (Stream), Miner im Heimnetz (AxeOS)
 #include "app.h"
+#include <HTTPUpdate.h>
 #include <ESPmDNS.h>
 #include "certs.h"
 
@@ -428,9 +429,11 @@ static void fetchMiner(const String &addr, MinerInfo &mi) {
 // "Update verfuegbar": neueste Release-Version der Miner-Firmware von GitHub, alle 6 Stunden.
 // Die Antwort ist ca. 50 KB gross; "tag_name" steht nach ca. 1,5 KB, danach wird abgebrochen.
 // ---------------------------------------------------------------------------
-static const char *MINER_REPOS[] = {"", "bitaxeorg/ESP-Miner", "shufps/ESP-Miner-NerdQAxePlus"};
-static char latestTag[3][16];
-static uint32_t latestCheckedMs[3] = {0, 0, 0};
+// Index 3 = diese Firmware selbst
+static const char *MINER_REPOS[] = {"", "bitaxeorg/ESP-Miner", "shufps/ESP-Miner-NerdQAxePlus", FW_REPO};
+static const uint8_t OWN_REPO = 3;
+static char latestTag[4][16];
+static uint32_t latestCheckedMs[4] = {0, 0, 0, 0};
 
 const char *latestMinerFirmware(uint8_t repo) { return repo < 3 ? latestTag[repo] : ""; }
 
@@ -440,9 +443,9 @@ static bool fetchLatestTag(uint8_t repo) {
   HTTPClient h;
   setupHttp(h, false, 8000);
   h.useHTTP10(true);
-  Serial.printf("[miner] frage GitHub nach %s\n", MINER_REPOS[repo]);
+  Serial.printf("[github] frage nach %s\n", MINER_REPOS[repo]);
   if (!h.begin(t, String("https://api.github.com/repos/") + MINER_REPOS[repo] + "/releases/latest")) {
-    Serial.println("[miner] GitHub: begin fehlgeschlagen");
+    Serial.println("[github] begin fehlgeschlagen");
     return false;
   }
   h.addHeader("Accept", "application/vnd.github+json");
@@ -479,7 +482,7 @@ static bool fetchLatestTag(uint8_t repo) {
   }
   h.end();
   t.stop();
-  Serial.printf("[miner] neueste Firmware %s: %s\n", MINER_REPOS[repo], ok ? latestTag[repo] : "?");
+  Serial.printf("[github] neueste Version %s: %s\n", MINER_REPOS[repo], ok ? latestTag[repo] : "?");
   return ok;
 }
 
@@ -493,6 +496,52 @@ static int cmpVersion(const char *a, const char *b) {
     if (x < 0) break;
   }
   return 0;
+}
+
+// --- eigene Firmware ---
+const char *latestFirmware() {
+  const char *t = latestTag[OWN_REPO];
+  return *t == 'v' ? t + 1 : t;
+}
+bool firmwareUpdateAvailable() { return latestTag[OWN_REPO][0] && cmpVersion(FW_VERSION, latestFirmware()) < 0; }
+
+bool checkFirmwareNow() {
+  latestCheckedMs[OWN_REPO] = millis();
+  return fetchLatestTag(OWN_REPO);
+}
+
+// Laedt timechain-terminal-<version>.bin aus dem Release (GitHub leitet auf einen Download-Server
+// mit Let's-Encrypt-Zertifikat um, beide Zertifizierungsstellen stehen in certs.h) und schreibt sie
+// in den freien App-Bereich. Bei Erfolg Neustart, sonst bleibt die laufende Firmware aktiv.
+bool installFirmwareUpdate(String &err) {
+  if (!latestTag[OWN_REPO][0] && !checkFirmwareNow()) {
+    err = L("GitHub nicht erreichbar.", "GitHub not reachable.");
+    return false;
+  }
+  if (!firmwareUpdateAvailable()) {
+    err = L("Es gibt keine neuere Version.", "There is no newer version.");
+    return false;
+  }
+  const String ver = latestFirmware();
+  const String url = String("https://github.com/") + FW_REPO + "/releases/download/" + latestTag[OWN_REPO] +
+                     "/timechain-terminal-" + ver + ".bin";
+  Serial.printf("[ota] lade %s (frei %u Byte)\n", url.c_str(), ESP.getFreeHeap());
+  stopApiConnection();  // Speicher fuer die TLS-Verbindung frei machen
+  WiFiClientSecure c;
+  c.setCACert(ROOT_CA_BUNDLE);
+  c.setTimeout(20);
+  httpUpdate.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
+  httpUpdate.rebootOnUpdate(false);
+  httpUpdate.setLedPin(-1);
+  t_httpUpdate_return res = httpUpdate.update(c, url);
+  if (res == HTTP_UPDATE_OK) {
+    Serial.printf("[ota] Version %s installiert -> Neustart\n", ver.c_str());
+    delay(500);
+    ESP.restart();
+  }
+  err = String(L("Update fehlgeschlagen: ", "Update failed: ")) + httpUpdate.getLastErrorString();
+  Serial.printf("[ota] %s\n", err.c_str());
+  return false;
 }
 
 bool minerUpdateAvailable(const MinerInfo &m) {
@@ -548,6 +597,11 @@ bool fetchAll() {
     if (stale) fetchChart();
   }
   if (layout.hasMiner()) fetchMiners();
+  // neuere Version dieser Firmware? (alle 6 Stunden, nach einem Fehler fruehestens nach 30 Minuten)
+  {
+    const uint32_t wait = latestTag[OWN_REPO][0] ? 6UL * 3600 * 1000 : 30UL * 60 * 1000;
+    if (!latestCheckedMs[OWN_REPO] || millis() - latestCheckedMs[OWN_REPO] > wait) checkFirmwareNow();
+  }
   data.online = okBlocks && okFees;
   if (data.online) data.updatedAt = time(nullptr);
   Serial.printf("[data] Abruf %s in %lu ms, Block %u, Heap frei %u\n", data.online ? "ok" : "FEHLER",

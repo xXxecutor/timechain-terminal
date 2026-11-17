@@ -8,9 +8,10 @@ Ein PC wird nur für die erste Installation gebraucht, danach reicht ein USB-Net
 Updates kommen über WLAN.
 
 **Installieren:** [Web-Flasher](https://xxxecutor.github.io/timechain-terminal/) in Chrome oder
-Edge öffnen, Gerät per USB anschließen, „Firmware installieren“. Updates:
-[Releases](https://github.com/xXxecutor/timechain-terminal/releases) →
-`timechain-terminal-<version>.bin` → auf der Geräte-Webseite unter System hochladen.
+Edge öffnen, Gerät per USB anschließen, „Firmware installieren“. **Updates** ab Version 1.1.0
+mit einem Klick: Das Gerät fragt alle 6 Stunden bei GitHub nach neuen
+[Releases](https://github.com/xXxecutor/timechain-terminal/releases); ist eines da, zeigt die
+Geräte-Webseite einen Hinweis und unter System den Button „Version … installieren“.
 
 ## Was angezeigt wird
 
@@ -132,7 +133,12 @@ außerdem, wenn das Display gleich oder gerade neu gezeichnet wird (dann antwort
   oder `http://192.168.1.20:3006`, wird vor dem Speichern geprüft)
 * **Sicherheit:** Passwort für die Seite (Benutzer `admin`, mindestens 6 Zeichen). Vergessen:
   Gerät per USB anschließen und im seriellen Monitor `password-reset` senden.
-* **System:** Firmware-Update über WLAN (Einstellungen und WLAN bleiben erhalten);
+* **System:** Firmware-Update über WLAN (Einstellungen und WLAN bleiben erhalten): Gibt es auf
+  GitHub ein neueres Release, steht dort „Version … installieren“. Das Gerät lädt die Datei dann
+  selbst von GitHub (HTTPS, Zertifikate geprüft), schreibt sie in den zweiten App-Bereich und
+  startet neu (1–2 Minuten); schlägt etwas fehl, läuft die bisherige Version weiter. „Nach Updates
+  suchen“ fragt sofort nach, sonst alle 6 Stunden. Eine eigene Datei lässt sich weiterhin von Hand
+  hochladen;
   **anderes WLAN:** „Netzwerke suchen“ listet die 2,4-GHz-Netze in Reichweite (nach Signalstärke),
   Name antippen, Passwort eingeben, „Verbinden“. Das Gerät testet die neue Verbindung bis zu 20 s;
   klappt sie nicht, kehrt es mit der zuvor gespeicherten WLAN-Konfiguration ins alte WLAN zurück

@@ -22,7 +22,11 @@
 #define WIFI_HOSTNAME  "timechain-terminal"
 
 // Firmware-Version (Web-Oberflaeche, Info-Bildschirm, Web-Flasher)
-#define FW_VERSION "1.0.2"
+#ifndef FW_VERSION  // fuer Tests per -DFW_VERSION=... ueberschreibbar
+#define FW_VERSION "1.1.0"
+#endif
+// GitHub-Repository der Firmware: Update-Pruefung und Ein-Klick-Installation aus den Releases
+#define FW_REPO "xXxecutor/timechain-terminal"
 
 // ---------------------------------------------------------------------------
 // Datenquelle

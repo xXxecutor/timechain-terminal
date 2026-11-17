@@ -238,6 +238,11 @@ uint32_t fetchTipHeight();
 uint32_t testNode(const Node &n);
 void resetConnection();
 void stopApiConnection();
+// Firmware-Updates aus den GitHub-Releases (FW_REPO): neueste Version ("" = unbekannt)
+const char *latestFirmware();
+bool firmwareUpdateAvailable();
+bool checkFirmwareNow();                 // sofort bei GitHub nachfragen
+bool installFirmwareUpdate(String &err);  // laedt das Release und startet bei Erfolg neu
 
 // format.cpp
 String fmtInt(uint64_t v);
@@ -305,6 +310,9 @@ extern bool nodeChangePending;
 extern Node pendingNode;
 extern uint32_t renderCount;     // Anzahl Bildwechsel seit dem Start (fuer die Statusmeldungen der Webseite)
 bool redrawPending();             // ein Bildwechsel steht an
+extern bool fwInstallPending;     // Ein-Klick-Update angefordert (Hauptschleife installiert)
+extern uint32_t fwInstallAt;
+extern String fwInstallError;
 extern bool settingsPending;     // Sprache/Layout/Farben geaendert -> in loop() uebernehmen
 extern Lang pendingLang;
 extern Layout pendingLayout;
