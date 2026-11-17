@@ -9,11 +9,16 @@ static const PartInfo P_BLOCK[] = {{"age", "Alter und Uhrzeit", "Age and time"},
                                    {"fees", "Gebührenspanne", "Fee range"},
                                    {"reward", "Belohnung", "Reward"},
                                    {"hash", "Block-Hash", "Block hash"}};
-static const PartInfo P_CHAIN[] = {{"median", "Median-Gebühr (Mempool-Blöcke, steht immer oben)", "Median fee (mempool blocks, always on top)"},
-                                   {"range", "Gebührenspanne", "Fee range"},
+// Blockkette: geminte und naechste Bloecke getrennt einstellbar. Der Schluessel "chain" bleibt fuer die
+// geminten Bloecke, damit gespeicherte Einstellungen erhalten bleiben (ein altes "median" wird ignoriert).
+static const PartInfo P_CHAIN[] = {{"range", "Gebührenspanne", "Fee range"},
                                    {"tx", "Transaktionen", "Transactions"},
-                                   {"time", "Alter bzw. Zeit bis zum Block", "Age or time until the block"},
-                                   {"pool", "Pool (geminte Blöcke)", "Pool (mined blocks)"}};
+                                   {"time", "Alter", "Age"},
+                                   {"pool", "Mining-Pool", "Mining pool"}};
+static const PartInfo P_CHAINMP[] = {{"median", "Median-Gebühr", "Median fee"},
+                                     {"range", "Gebührenspanne", "Fee range"},
+                                     {"tx", "Transaktionen", "Transactions"},
+                                     {"time", "Zeit bis zum Block", "Time until the block"}};
 static const PartInfo P_MINER[] = {{"temp", "Temperatur", "Temperature"},   {"power", "Leistung", "Power"},
                                    {"fan", "Lüfter (%)", "Fan (%)"},          {"eff", "Effizienz", "Efficiency"},
                                    {"best", "Best Diff", "Best diff"},        {"shares", "Shares", "Shares"},
@@ -34,7 +39,8 @@ static const PartInfo P_LN[] = {{"nodes", "Knoten", "Nodes"}, {"channels", "Kan�
 #define PG(key, de, en, arr, fde, fen) {key, de, en, arr, (uint8_t)(sizeof arr / sizeof arr[0]), fde, fen}
 const PartGroup PART_GROUPS[] = {
     PG("block", "Letzter Block", "Latest block", P_BLOCK, "Blockhöhe", "Block height"),
-    PG("chain", "Blockkette", "Block chain", P_CHAIN, "Blockhöhe (geminte Blöcke)", "Block height (mined blocks)"),
+    PG("chain", "Blockkette – geminte Blöcke", "Block chain – mined blocks", P_CHAIN, "Blockhöhe", "Block height"),
+    PG("chainmp", "Blockkette – nächste Blöcke", "Block chain – next blocks", P_CHAINMP, "", ""),
     PG("miner", "Miner (alle Miner-Kacheln)", "Miners (all miner tiles)", P_MINER, "Hashrate und Name",
        "Hashrate and name"),
     PG("mempool", "Mempool", "Mempool", P_MEMPOOL, "Anzahl Transaktionen", "Number of transactions"),
@@ -55,12 +61,12 @@ int partGroupOf(WidgetId id) {
   switch (id) {
     case W_BLOCK: return 0;
     case W_CHAIN: return 1;
-    case W_MINER: case W_MINER1: case W_MINER2: case W_MINER3: case W_MINER4: return 2;
-    case W_MEMPOOL: return 3;
-    case W_HASHRATE: return 4;
-    case W_DIFFICULTY: return 5;
-    case W_HALVING: return 6;
-    case W_LIGHTNING: return 7;
+    case W_MINER: case W_MINER1: case W_MINER2: case W_MINER3: case W_MINER4: return 3;
+    case W_MEMPOOL: return 4;
+    case W_HASHRATE: return 5;
+    case W_DIFFICULTY: return 6;
+    case W_HALVING: return 7;
+    case W_LIGHTNING: return 8;
     default: return -1;
   }
 }
@@ -129,9 +135,10 @@ String partsToString() {
 }
 
 // Aktive Teile eines Inhalts in Prioritaets-Reihenfolge (Indizes in der Teile-Tabelle)
-int enabledParts(WidgetId id, uint8_t *out, int max) {
-  int g = partGroupOf(id);
-  if (g < 0) return 0;
+int enabledParts(WidgetId id, uint8_t *out, int max) { return enabledPartsOfGroup(partGroupOf(id), out, max); }
+
+int enabledPartsOfGroup(int g, uint8_t *out, int max) {
+  if (g < 0 || g >= N_PART_GROUPS) return 0;
   int n = 0;
   for (int i = 0; i < PART_GROUPS[g].n && n < max; ++i) {
     int k = groups[g].order[i];

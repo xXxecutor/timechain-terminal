@@ -1201,20 +1201,23 @@ const val=()=>G.map(g=>g.k+':'+st[g.k].map(x=>(x.on?'':'-')+x.k).join(',')).join
 const grid=document.getElementById('pgrid');
 document.getElementById('plegend').textContent=T.legend;
 function measure(){clearTimeout(tm);tm=setTimeout(()=>{fetch('/api/parts?p='+encodeURIComponent(val())).then(r=>r.json()).then(j=>{M=j;draw(true)}).catch(()=>{})},250)}
-function status(gi,pi){if(!M)return null;const ws=M.w.filter(w=>w.g==gi);if(!ws.length)return null;
+// Die beiden Blockketten-Gruppen gehoeren zur selben Kachel; gezeigt wird je Gruppe laut M.cs
+function wsOf(gi){const k=G[gi].k,gk=k=='chainmp'?G.findIndex(g=>g.k=='chain'):gi;return M.w.filter(w=>w.g==gk)}
+function status(gi,pi){if(!M)return null;const ws=wsOf(gi);if(!ws.length)return null;const k=G[gi].k;
+if((k=='chain'||k=='chainmp')&&M.cs)return M.cs[k=='chain'?0:1]>>pi&1?['y',T.yes]:['n',T.noroom];
 const shown=ws.filter(w=>w.s>>pi&1),data=ws.filter(w=>w.d>>pi&1);
-if(G[gi].k=='chain'&&shown.length&&M.cs){const am=pi!=0,ap=pi!=4,im=M.cs[0]>>pi&1,ip=M.cs[1]>>pi&1;
-if(am&&ap&&im&&!ip)return['p',T.onlym];if(am&&ap&&ip&&!im)return['p',T.onlyp]}
 if(shown.length==ws.length)return['y',T.yes];
 if(shown.length)return['p',T.part+': '+shown.map(w=>w.t).join(', ')];
 if(!data.length)return['d',T.nodata];return['n',T.noroom]}
 function draw(keep){grid.innerHTML='';G.forEach((g,gi)=>{const c=document.createElement('div');c.className='pgc';
 const h=document.createElement('h3');h.textContent=g.t;const info=document.createElement('div');info.className='pgi';
-if(M){const ws=M.w.filter(w=>w.g==gi);if(ws.length)info.textContent=T.inl+' ('+M.o+'): '+ws.map(w=>w.t+' '+w.c).join(', ');
+if(M){const ws=wsOf(gi);if(ws.length)info.textContent=T.inl+' ('+M.o+'): '+ws.map(w=>w.t+' '+w.c).join(', ');
 else{info.textContent=T.notin+' ('+M.o+')';c.classList.add('out')}}c.append(h,info);
+if(g.k=='chainmp'){const hn=document.createElement('div');hn.className='pgi';hn.textContent=T.chainhint;c.append(hn)}
 const fx=document.createElement('div');fx.className='pr fix';fx.innerHTML='<label><span class="pn">🔒</span><span class="pt"><span></span><span class="ps f"></span></span></label>';
-fx.querySelector('.pt span').textContent=g.f;fx.querySelector('.ps').textContent=T.always;c.append(fx);
-const l=st[g.k];let n=0;l.forEach((it,i)=>{const r=document.createElement('div');r.className='pr'+(it.on?'':' off');
+fx.querySelector('.pt span').textContent=g.f;fx.querySelector('.ps').textContent=T.always;if(g.f)c.append(fx);
+const l=st[g.k];let n=g.k=='chain'?1:0;  // Blockkette: die Blockhöhe ist Zeile 1
+if(g.k=='chain')fx.querySelector('.pn').textContent='1.';l.forEach((it,i)=>{const r=document.createElement('div');r.className='pr'+(it.on?'':' off');
 const lab=document.createElement('label'),cb=document.createElement('input'),tx=document.createElement('span'),sp=document.createElement('span'),ps=document.createElement('span'),num=document.createElement('span');
 num.className='pn';num.textContent=it.on?++n+'.':'';cb.type='checkbox';cb.checked=it.on;cb.onchange=()=>{it.on=cb.checked;draw();measure()};
 tx.className='pt';sp.textContent=g.p.find(p=>p.k==it.k).t;ps.className='ps';tx.append(sp,ps);
@@ -1320,7 +1323,7 @@ static void handleContentPage() {
                L("{\"legend\":\"Neben jedem Eintrag steht, ob er im aktuellen Layout zu sehen ist: grün = sichtbar, "
                  "orange = nur in einem Teil der Kacheln, rot = kein Platz (Kachel vergrößern oder Eintrag nach oben "
                  "schieben), grau = keine Daten oder ausgeblendet. Die Anzeige rechnet mit der Auswahl hier, auch "
-                 "bevor sie gespeichert ist.\",\"yes\":\"✓ sichtbar\",\"onlym\":\"◐ nur bei den geminten Blöcken\",\"onlyp\":\"◐ nur bei den nächsten Blöcken\",\"part\":\"◐ nur in\",\"noroom\":\"✗ kein "
+                 "bevor sie gespeichert ist.\",\"yes\":\"✓ sichtbar\",\"chainhint\":\"Gleiche Nummer wie bei den geminten Blöcken = gleiche Höhe im Display.\",\"part\":\"◐ nur in\",\"noroom\":\"✗ kein "
                  "Platz\",\"nodata\":\"keine Daten\",\"off\":\"ausgeblendet\",\"always\":\"immer sichtbar\","
                  "\"inl\":\"Im Layout\",\"notin\":\"Nicht im aktuellen Layout\",\"up\":\"nach oben (wichtiger)\","
                  "\"down\":\"nach unten (weniger wichtig)\",\"defq\":\"Alle Kacheln auf die Standard-Inhalte "
@@ -1328,7 +1331,7 @@ static void handleContentPage() {
                  "{\"legend\":\"Each entry shows whether it is visible in the current layout: green = visible, "
                  "orange = only in some of the tiles, red = no room (enlarge the tile or move the entry up), "
                  "grey = no data or hidden. The check uses the selection here, even before it is saved.\","
-                 "\"yes\":\"✓ visible\",\"onlym\":\"◐ only in mined blocks\",\"onlyp\":\"◐ only in next blocks\",\"part\":\"◐ only in\",\"noroom\":\"✗ no room\",\"nodata\":\"no "
+                 "\"yes\":\"✓ visible\",\"chainhint\":\"Same number as for the mined blocks = same height on the display.\",\"part\":\"◐ only in\",\"noroom\":\"✗ no room\",\"nodata\":\"no "
                  "data\",\"off\":\"hidden\",\"always\":\"always visible\",\"inl\":\"In layout\",\"notin\":\"Not "
                  "in the current layout\",\"up\":\"up (more important)\",\"down\":\"down (less important)\","
                  "\"defq\":\"Reset all tiles to the default contents? (Applied when you save.)\"}"));

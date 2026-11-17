@@ -87,6 +87,8 @@ int partGroupOf(WidgetId id);
 bool parseParts(const String &text);
 String partsToString();
 int enabledParts(WidgetId id, uint8_t *out, int max);
+int enabledPartsOfGroup(int group, uint8_t *out, int max);
+static const int PG_CHAIN = 1, PG_CHAINMP = 2;  // Blockkette: geminte bzw. naechste Bloecke
 bool partEnabled(WidgetId id, int part);
 
 // ---------------------------------------------------------------------------

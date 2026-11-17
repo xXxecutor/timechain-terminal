@@ -923,49 +923,50 @@ static void drawCube(int x, int y, int w, int h, bool mined, int idx) {
     lines[n] = s, fonts[n] = f, names[n] = name, pids[n] = curPid;
     colors[n++] = c;
   };
-  // Gemeinsames Zeilenraster fuer gemint und Mempool, damit jede Angabe in beiden Wuerfelarten auf
-  // derselben Hoehe steht: Zeile 0 ist der Kopf (Blockhoehe bzw. Median-Gebuehr), danach die Teile
-  // in der eingestellten Reihenfolge. Was es nur bei einer Art gibt (Pool), bleibt in der anderen
-  // als Leerzeile stehen.
+  // Geminte und naechste Bloecke haben getrennte Einstellungen. Die Zeilen beider Wuerfelarten stehen
+  // nach ihrer Nummer auf derselben Hoehe (gemeinsamer oberer Rand), so dass gleiche Positionen in
+  // beiden Listen fluchten.
   uint8_t ord[8];
-  const int np = enabledParts(W_CHAIN, ord, 8);
+  const int np = enabledPartsOfGroup(mined ? PG_CHAIN : PG_CHAINMP, ord, 8);
   if (mined) {
-    add(fmtInt(data.blocks[idx].height), cf.head, col(C_MINED_HEIGHT));
+    const BlockInfo &b = data.blocks[idx];
+    add(fmtInt(b.height), cf.head, col(C_MINED_HEIGHT));
+    for (int j = 0; j < np; ++j) {
+      curPid = ord[j];
+      switch (ord[j]) {
+        case 0: add(cubeRange(true, idx, rangeStyle), rangeFont(rangeStyle), fg); break;
+        case 1: add(fmtInt(b.txCount) + " Tx", cf.line, fg); break;
+        case 2: add(fmtAgeShort(b.ts), cf.bold, fg); break;
+        case 3: add(b.pool, cf.small, fg, true); break;
+      }
+    }
   } else {
-    const bool medianOn = partEnabled(W_CHAIN, 0);
-    curPid = medianOn ? 0 : -1;
-    add(medianOn ? cubeMedian(idx, medianStyle) : String(""), medianFont(medianStyle), fg);
-  }
-  for (int j = 0; j < np; ++j) {
-    curPid = ord[j];
-    switch (ord[j]) {
-      case 0: break;  // Median steht im Kopf
-      case 1: add(cubeRange(mined, idx, rangeStyle), rangeFont(rangeStyle), fg); break;
-      case 2: add(fmtInt(mined ? data.blocks[idx].txCount : data.mp[idx].nTx) + " Tx", cf.line, fg); break;
-      case 3:
-        add(mined ? fmtAgeShort(data.blocks[idx].ts)
-                  : String(L("in ~", "in ~")) + String((idx + 1) * 10) + L(" Min.", " min"),
-            cf.bold, fg);
-        break;
-      case 4:
-        if (mined) add(data.blocks[idx].pool, cf.small, fg, true);
-        else curPid = -1, add("", cf.small, fg);  // Leerzeile, damit die Zeilen darunter passen
-        break;
+    const MempoolBlock &m = data.mp[idx];
+    for (int j = 0; j < np; ++j) {
+      curPid = ord[j];
+      switch (ord[j]) {
+        case 0: add(cubeMedian(idx, medianStyle), medianFont(medianStyle), fg); break;
+        case 1: add(cubeRange(false, idx, rangeStyle), rangeFont(rangeStyle), fg); break;
+        case 2: add(fmtInt(m.nTx) + " Tx", cf.line, fg); break;
+        case 3: add(String(L("in ~", "in ~")) + String((idx + 1) * 10) + L(" Min.", " min"), cf.bold, fg); break;
+      }
     }
   }
+  uint8_t tmp[8];
+  const int rows = max(1 + enabledPartsOfGroup(PG_CHAIN, tmp, 8), enabledPartsOfGroup(PG_CHAINMP, tmp, 8));
   if (!n) return;
   // so viele Zeilen wie passen, vertikal zentriert; fehlt Platz, rueckt der Zeilenabstand
   // erst etwas zusammen, bevor Zeilen wegfallen
+  // Raster fuer beide Wuerfelarten gleich: Zeilenzahl = die laengere der beiden Listen
   const int minPitch = cf.pitch == 20 ? 17 : 23;
   int pitch = cf.pitch;
-  if (n * pitch + 6 > h) pitch = max(minPitch, (h - 6) / n);
-  int k = n;
+  if (rows * pitch + 6 > h) pitch = max(minPitch, (h - 6) / rows);
+  int k = rows;
   while (k > 1 && k * pitch + 6 > h) --k;
   int top = y + (h - k * pitch) / 2;
   int asc = (cf.pitch == 20 ? 15 : 21) - (cf.pitch - pitch) / 2;
-  for (int i = 0; i < k; ++i) {
+  for (int i = 0; i < min(n, k); ++i) {
     text(cx, top + i * pitch + asc, truncate(lines[i], fonts[i], inner, names[i]), fonts[i], colors[i], CENTER);
-    markPart(pids[i]);
     if (curWidget == W_CHAIN && pids[i] >= 0) chainShown[mined ? 0 : 1] |= 1 << pids[i];
   }
 }

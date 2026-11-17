@@ -26,7 +26,7 @@ Höchstgröße stehen im Editor an jedem Kasten):
 | Letzter Block | Blockhöhe, Block-Hash (neben der Höhe oder als Zeile; die führenden Nullen als „19×0“ zusammengefasst), Alter, Miner/Pool, Transaktionen, Größe, Gebührenspanne, Belohnung |
 | Moscow Time | Satoshis pro Einheit der Haupt- und Zweitwährung als „Uhrzeit“ (z. B. 15:44) |
 | Gebühren | Niedrig / Mittel / Hoch wie auf mempool.space, darunter „Ohne Priorität“ und Minimum |
-| Blockkette | links die letzten geminten Blöcke (schwarz) mit Gebührenspanne, rechts die nächsten Mempool-Blöcke (gelb); Anzahl passt sich der Breite an. Beide Würfelarten nutzen dasselbe Zeilenraster: oben Blockhöhe bzw. Median-Gebühr, darunter jede Angabe auf derselben Höhe; was es nur bei einer Art gibt (Pool), bleibt bei der anderen als Leerzeile |
+| Blockkette | links die letzten geminten Blöcke (schwarz) mit Gebührenspanne, rechts die nächsten Mempool-Blöcke (gelb); Anzahl passt sich der Breite an. Was die Würfel zeigen, wird für geminte und nächste Blöcke getrennt eingestellt (Seite „Inhalte“); gleiche Position in beiden Listen = gleiche Höhe im Display (bei den geminten Blöcken ist die Blockhöhe Zeile 1) |
 | Mempool, Hashrate, Difficulty, Halving, Lightning | Kacheln mit Wert und so vielen Zusatzangaben, wie Platz ist (z. B. „16.237 Knoten · 32.676 Kanäle“). Kacheln in derselben Reihe gleichen sich an: Überschriften, Werte (gleiche Schriftgröße) und Zusatzzeilen stehen auf einer Linie |
 | Preis-Chart | Kursverlauf in der Hauptwährung über 24 Stunden, 7, 30 oder 90 Tage, 1, 2 oder 4 Jahre oder den gesamten Verlauf (logarithmisch; mempool.space hat USD ab 2010, EUR ab 2013, GBP/JPY ab 2014, CHF ab 2019) |
 | Miner (alle) | Gesamt-Hashrate und Leistung, darunter eine Zeile je Gerät (Name, Hashrate, Temperatur, Leistung), bei breiten Kacheln zweispaltig; bei nur einem Miner wie „Miner 1“ |
@@ -212,7 +212,7 @@ Der Build `dev` enthält zusätzlich den Prüfstand `/test/overflow`: Er zeichne
 jeder erlaubten Größe mit Extremwerten (7-stellige Blockhöhe, Gebühren über 1.000 sat/vB,
 4 Miner mit langen Namen …), echten Daten und ohne Daten, auf Deutsch und Englisch, im Quer-
 und Hochformat (ca. 30.000 Fälle, 4 Minuten), und meldet alles, was über den Rand geht oder
-gekürzt wird. Stand 1.1.1: 0 Überläufe, 0 Kürzungen. Außerdem zeigt `/preview.bmp?data=extrem`
+gekürzt wird. Stand 1.2.0: 0 Überläufe, 0 Kürzungen. Außerdem zeigt `/preview.bmp?data=extrem`
 die Vorschau mit diesen Extremwerten. In der Firmware für Nutzer (Release, Web-Flasher) fehlt
 beides.
 
