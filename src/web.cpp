@@ -1180,7 +1180,9 @@ body:JSON.stringify({off:[...S.offSet],edit:Object.values(S.editMap),own:S.own})
 // Teile je Kachel: Reihenfolge = Prioritaet, einzeln abschaltbar (Daten als JSON, Liste per JS)
 static const char PARTS_HTML[] PROGMEM = R"pt(<section id="parts"><h2>%T_TITLE%</h2><p class="hint">%T_HELP%</p>
 <p class="hint" id="plegend"></p>
-<style>.pg{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:12px;margin:10px 0}
+<style>.pg{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:12px 0 4px;align-items:start}.pgcol{display:flex;flex-direction:column;gap:12px;min-width:0}
+@media(max-width:860px){.pg{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:560px){.pg{grid-template-columns:1fr}}
+#pchain{margin:12px 0 0}
 .pgc{border:1px solid var(--line);border-radius:8px;padding:8px 10px}.pgc.out{opacity:.6}.pgc h3{margin:2px 0 2px;font-size:15px}
 .pgi{font-size:12px;color:var(--mut);margin:0 0 6px}
 .pr{display:flex;align-items:center;gap:6px;padding:4px 0;border-top:1px solid var(--line)}
@@ -1195,7 +1197,7 @@ static const char PARTS_HTML[] PROGMEM = R"pt(<section id="parts"><h2>%T_TITLE%<
 .cg .pr label{min-width:0}.cg .pt{min-width:0;overflow-wrap:anywhere}
 @media(max-width:560px){.cg{column-gap:6px}.cg .pr{flex-wrap:wrap;gap:4px}.cg .pr label{flex:1 1 100%;gap:6px;font-size:14px}.cg .pr button{padding:1px 8px;font-size:12px}.cg h3{font-size:13px}}</style>
 <form method="post" action="/settings" id="pform"><input type="hidden" name="back" value="content"><input type="hidden" name="parts" id="pval">
-<div class="pg" id="pgrid"></div><button>%T_SAVE%</button> <button type="button" id="pdef" class="sec">%T_DEF%</button></form></section>
+<div id="pchain"></div><div class="pg" id="pgrid"></div><button>%T_SAVE%</button> <button type="button" id="pdef" class="sec">%T_DEF%</button></form></section>
 <script>(()=>{const G=%GROUPS%,cur='%CUR%',T=%TEXTS%,st={};let M=null,tm=0;
 G.forEach(g=>{st[g.k]=g.p.map(p=>({k:p.k,on:true}))});
 cur.split(';').forEach(s=>{const i=s.indexOf(':');if(i<0)return;const k=s.slice(0,i),g=G.find(x=>x.k==k);if(!g)return;const l=[];
@@ -1242,10 +1244,13 @@ nn.textContent=(r==0||(left&&left.on)||(right&&right.on))?(r+1)+'.':'';nc.append
 cg.append(r==0?fixRow(G[gm]):left?mkRow(G[gm],gm,lm,left,r-1,null,true):document.createElement('div'));
 cg.append(right?mkRow(G[gp],gp,lp,right,r,null,true):document.createElement('div'))}
 const hn=document.createElement('div');hn.className='pgi';hn.style.marginTop='6px';hn.textContent=T.chainhint;c.append(cg,hn);return c}
-function draw(keep){grid.innerHTML='';G.forEach((g,gi)=>{if(g.k=='chainmp')return;if(g.k=='chain'){grid.append(chainCard());return}
+// Oben die breite Blockketten-Karte, darunter drei Spalten: Block-Daten, Netzwerk-Zyklen, Miner
+const COLS=[['block','mempool','hashrate'],['difficulty','halving','lightning'],['miner']];
+function draw(keep){grid.innerHTML='';const pc=document.getElementById('pchain');pc.innerHTML='';pc.append(chainCard());
+COLS.forEach(keys=>{const col=document.createElement('div');col.className='pgcol';keys.forEach(k=>{const gi=G.findIndex(g=>g.k==k);if(gi<0)return;const g=G[gi];
 const c=document.createElement('div');c.className='pgc';const h=document.createElement('h3');h.textContent=g.t;c.append(h,infoOf(gi,c));
-if(g.f){const fx=fixRow(g);c.append(fx)}
-const l=st[g.k];let n=0;l.forEach((it,i)=>c.append(mkRow(g,gi,l,it,i,it.on?++n+'.':'',false)));grid.append(c)})}
+if(g.f)c.append(fixRow(g));
+const l=st[g.k];let n=0;l.forEach((it,i)=>c.append(mkRow(g,gi,l,it,i,it.on?++n+'.':'',false)));col.append(c)});grid.append(col)})}
 draw();measure();
 document.getElementById('pform').onsubmit=()=>{document.getElementById('pval').value=val()};
 document.getElementById('pdef').onclick=()=>{if(!confirm(T.defq))return;G.forEach(g=>{st[g.k]=g.p.map(p=>({k:p.k,on:true}))});draw();measure()};})();</script>)pt";
