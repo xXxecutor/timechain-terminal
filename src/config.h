@@ -23,7 +23,7 @@
 
 // Firmware-Version (Web-Oberflaeche, Info-Bildschirm, Web-Flasher)
 #ifndef FW_VERSION  // fuer Tests per -DFW_VERSION=... ueberschreibbar
-#define FW_VERSION "1.2.4"
+#define FW_VERSION "1.2.5"
 #endif
 // GitHub-Repository der Firmware: Update-Pruefung und Ein-Klick-Installation aus den Releases
 #define FW_REPO "xXxecutor/timechain-terminal"

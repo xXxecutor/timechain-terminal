@@ -1516,6 +1516,7 @@ enum MinerSummary { SUM_SIDE, SUM_INLINE, SUM_ABOVE };
 struct MinerTable {
   const MinerType *type = nullptr;
   MinerSummary summary = SUM_ABOVE;
+  bool showPower = false;
   int cols = 0, shown = 0, rows = 0, width = 0, gap = 0, offset = 0;
   int nameWidth = 0, hashRight = 0, lines = 1, fields = 0, primary = 0;
   uint16_t priority = 0;
@@ -1525,27 +1526,34 @@ struct MinerTable {
 static bool betterMinerTable(const MinerTable &a, const MinerTable &b) {
   if (a.shown != b.shown) return a.shown > b.shown;
   if (a.primary != b.primary) return a.primary > b.primary;
-  // Zusätzliche Werte sollen auf Kosten einer geringfügig kleineren, gut lesbaren Schrift passen.
-  const int aq = min(a.type->size, 14) + 2 * a.fields, bq = min(b.type->size, 14) + 2 * b.fields;
-  if (aq != bq) return aq > bq;
+  // Unter 10 Punkt nur gehen, wenn sonst wichtige Angaben oder ganze Geräte fehlen.
+  const bool readableA = a.type->size >= 10, readableB = b.type->size >= 10;
+  if (readableA != readableB) return readableA;
+  if (a.fields != b.fields) return a.fields > b.fields;
+  if (a.showPower != b.showPower) return a.showPower;
   if (a.type->size != b.type->size) return a.type->size > b.type->size;
   if (a.priority != b.priority) return a.priority > b.priority;
   if (a.lines != b.lines) return a.lines < b.lines;
   return a.cols < b.cols;
 }
 
-static void fitMinerFields(MinerTable &t, const MinerWidths &m, const uint8_t *order, int n, int maxLines) {
+static bool fitMinerFields(MinerTable &t, const MinerWidths &m, const uint8_t *order, int n,
+                           uint16_t available, int maxLines) {
   const int fullName = m.name + MINER_GAP;
   const int minName = min(fullName, t.width < 100 ? max(20, t.type->size + MINER_GAP) : 48);
   t.hashRight = minName + m.hash;
-  if (t.hashRight > t.width) return;
+  if (t.hashRight > t.width) return false;
+  bool powerReached = false;
   int line = 0, used = t.hashRight, firstEnd = used;
   for (int i = 0; i < n; ++i) {
     const int part = order[i];
-    if (!m.value[part]) continue;
+    if (!(available & (1U << part))) continue;
+    if (part == 1) powerReached = true;
+    // Sobald ein verfügbarer Wert nicht mehr hineinpasst, endet die Prioritätsliste.
     const int width = m.value[part];
+    if (!width) break;
     if (used + MINER_GAP + width > t.width) {
-      if (line + 1 >= maxLines || width > t.width) continue;
+      if (line + 1 >= maxLines || width > t.width) break;
       ++line;
       used = 0;
     }
@@ -1560,10 +1568,11 @@ static void fitMinerFields(MinerTable &t, const MinerWidths &m, const uint8_t *o
   t.nameWidth = t.hashRight - m.hash - MINER_GAP;
   for (int i = 0; i < t.fields && !t.cells[i].line; ++i) t.cells[i].right += moreName;
   t.lines = line + 1;
+  return powerReached;
 }
 
 static MinerTable fitMinerTable(const MinerRow *miners, int count, const uint8_t *order, int n,
-                               const String &total, const String &power, int w, int h) {
+                               uint16_t available, const String &total, const String &power, int w, int h) {
   static const MinerType fonts[] = {
       {F_(helvR24_te), F_(helvB24_te), 24, 36}, {F_(helvR18_te), F_(helvB18_te), 18, 27},
       {F_(helvR14_te), F_(helvB14_te), 14, 21}, {F_(helvR12_te), F_(helvB12_te), 12, 16},
@@ -1574,7 +1583,6 @@ static MinerTable fitMinerTable(const MinerRow *miners, int count, const uint8_t
     const int lines = h / font.pitch;
     if (!lines) continue;
     const int totalW = textWidth(total, font.bold), powerW = textWidth(power, font.bold);
-    const int sumW = totalW + (powerW ? MINER_GAP + powerW : 0);
     MinerWidths widths[MAX_MINERS];
     for (int i = 0; i < count; ++i) {
       const MinerRow &m = miners[i];
@@ -1587,31 +1595,36 @@ static MinerTable fitMinerTable(const MinerRow *miners, int count, const uint8_t
         a.value[part] = max(a.value[part], textWidth(m.value[part], font.regular));
       }
     }
-    for (MinerSummary summary : {SUM_SIDE, SUM_INLINE, SUM_ABOVE}) {
-      const bool above = summary == SUM_ABOVE;
-      if (summary == SUM_SIDE && (!powerW || lines < 2)) continue;
-      if (above && sumW > w) continue;
-      const int offset = above ? 0 : (summary == SUM_SIDE ? max(totalW, powerW) : sumW) + gap;
-      if (offset >= w) continue;
-      const int tableLines = lines - above;
-      for (int shown = count; shown > 0 && shown >= best.shown; --shown) {
-        for (int cols = 1; cols <= shown; ++cols) {
-          const int groups = (shown + cols - 1) / cols;
-          const int maxLines = tableLines / groups;
-          if (!maxLines) continue;
-          MinerTable t;
-          t.type = &font;
-          t.summary = summary;
-          t.shown = shown;
-          t.cols = cols;
-          t.width = (w - offset - (cols - 1) * gap) / cols;
-          t.gap = gap;
-          t.offset = offset;
-          fitMinerFields(t, widths[shown - 1], order, n, maxLines);
-          if (t.hashRight > t.width) continue;
-          t.rows = groups * t.lines + above;
-          if (summary == SUM_SIDE && t.rows < 2) continue;
-          if (!best.shown || betterMinerTable(t, best)) best = t;
+    for (bool showPower : {true, false}) {
+      if (showPower && !powerW) continue;
+      const int sumW = totalW + (showPower ? MINER_GAP + powerW : 0);
+      for (MinerSummary summary : {SUM_SIDE, SUM_INLINE, SUM_ABOVE}) {
+        const bool above = summary == SUM_ABOVE;
+        if (summary == SUM_SIDE && (!showPower || lines < 2)) continue;
+        if (above && sumW > w) continue;
+        const int offset = above ? 0 : (summary == SUM_SIDE ? max(totalW, powerW) : sumW) + gap;
+        if (offset >= w) continue;
+        const int tableLines = lines - above;
+        for (int shown = count; shown > 0 && shown >= best.shown; --shown) {
+          for (int cols = 1; cols <= shown; ++cols) {
+            const int groups = (shown + cols - 1) / cols;
+            const int maxLines = tableLines / groups;
+            if (!maxLines) continue;
+            MinerTable t;
+            t.type = &font;
+            t.summary = summary;
+            t.showPower = showPower;
+            t.shown = shown;
+            t.cols = cols;
+            t.width = (w - offset - (cols - 1) * gap) / cols;
+            t.gap = gap;
+            t.offset = offset;
+            const bool powerReached = fitMinerFields(t, widths[shown - 1], order, n, available, maxLines);
+            if (t.hashRight > t.width || (showPower && !powerReached)) continue;
+            t.rows = groups * t.lines + above;
+            if (summary == SUM_SIDE && t.rows < 2) continue;
+            if (!best.shown || betterMinerTable(t, best)) best = t;
+          }
         }
       }
     }
@@ -1630,7 +1643,7 @@ static void drawMinerTable(const MinerRow *miners, const MinerTable &t, const St
   const int pitch = min(font.pitch + 6, h / t.rows);
   const int base = y + (h - t.rows * pitch) / 2 + (pitch + ascent - descent) / 2;
   text(x, base, hash, font.bold, col(C_TEXT));
-  if (power.length()) {
+  if (t.showPower) {
     if (t.summary == SUM_SIDE) text(x, base + pitch, power, font.bold, col(C_TEXT));
     else text(x + textWidth(hash, font.bold) + MINER_GAP, base, power, font.bold, col(C_TEXT));
     markPart(1);
@@ -1694,17 +1707,20 @@ static void minerAll(int x, int y, int w, int h) {
   uint8_t order[MINER_FIELDS];
   const int n = enabledParts(W_MINER, order, MINER_FIELDS);
   if (!online) noData();
-  for (int i = 0; i < n; ++i)
+  int firstAvailable = -1;
+  for (int i = 0; i < n; ++i) {
     if (!(available & (1U << order[i]))) noData(order[i]);
+    else if (firstAvailable < 0) firstAvailable = order[i];
+  }
 
   const String hash = fmtHash(total);
   const String pw = online && partEnabled(W_MINER, 1) ? fmtDec(power, 0) + " W" : String();
-  const MinerTable table = fitMinerTable(rows, data.nMiners, order, n, hash, pw, iw, ch);
+  const MinerTable table = fitMinerTable(rows, data.nMiners, order, n, available, hash, pw, iw, ch);
   if (table.shown) return drawMinerTable(rows, table, hash, pw, ix, cy, ch);
   const auto *f = F_(helvB12_te);
   const int base = cy + (ch + 12) / 2, hw = textWidth(hash, f);
   text(ix, base, truncate(hash, f, iw), f, col(C_TEXT));
-  if (pw.length() && hw + MINER_GAP + textWidth(pw, f) <= iw) {
+  if (firstAvailable == 1 && hw + MINER_GAP + textWidth(pw, f) <= iw) {
     text(ix + hw + MINER_GAP, base, pw, f, col(C_TEXT));
     markPart(1);
   }
