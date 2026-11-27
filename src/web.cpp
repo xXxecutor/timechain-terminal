@@ -870,41 +870,19 @@ static void handlePreview() {
   Serial.printf("[web] Vorschau in %lu ms\n", millis() - t0);
 }
 
-static void saveLayout(const Layout &l) {
+static void handleLayoutSave() {
+  if (!guard()) return;
+  Layout l;
+  String err;
+  if (!parseLayout(server.arg("l"), l, &err)) return server.send(400, "text/plain; charset=utf-8", err);
   activeLayoutText() = layoutToString(l);
   saveSettings();
   pendingLayout = l;
   pendingLang = lang;
   settingsPending = true;
   Serial.printf("[cfg] Layout: %s\n", activeLayoutText().c_str());
-}
-
-static void handleLayoutSave() {
-  if (!guard()) return;
-  Layout l;
-  String err;
-  if (!parseLayout(server.arg("l"), l, &err)) return server.send(400, "text/plain; charset=utf-8", err);
-  saveLayout(l);
   server.send(200, "text/plain; charset=utf-8", L("Gespeichert. Das Display wird neu gezeichnet (ca. 30 s).",
                                                   "Saved. The display will be redrawn (about 30 s)."));
-}
-
-static void handleLayoutRemove() {
-  if (!guard()) return;
-  Layout l;
-  if (server.arg("r") != String(cfg.rotation) || !parseLayout(activeLayoutText(), l))
-    return server.send(409, "text/plain; charset=utf-8",
-                       L("Das Layout hat sich geändert. Die Liste wird neu geladen.", "The layout changed. Reloading the list."));
-  const String key = server.arg("k");
-  int i = 0;
-  while (i < l.n && key != WIDGETS[l.s[i].id].key) ++i;
-  if (i == l.n)
-    return server.send(404, "text/plain; charset=utf-8", L("Kachel nicht mehr im Layout.", "Tile is no longer in the layout."));
-  for (; i + 1 < l.n; ++i) l.s[i] = l.s[i + 1];
-  --l.n;
-  saveLayout(l);
-  server.send(200, "text/plain; charset=utf-8",
-              L("Kachel entfernt. Das Display wird neu gezeichnet.", "Tile removed. The display will be redrawn."));
 }
 
 const char THEME_JS[] PROGMEM = R"(<script>
@@ -970,7 +948,12 @@ static const char EDITOR[] PROGMEM = R"(
 .rs[data-e=ne]{right:0;top:0;cursor:nesw-resize;background:linear-gradient(45deg,#0000 50%,#c8261e 50%)}
 .rs[data-e=sw]{left:0;bottom:0;cursor:nesw-resize;background:linear-gradient(225deg,#0000 50%,#c8261e 50%)}
 .rs[data-e=se]{right:0;bottom:0;cursor:nwse-resize;background:linear-gradient(135deg,#0000 50%,#c8261e 50%)}
-.w{padding-left:10px}
+.w{padding-left:10px;padding-right:36px}
+.w .rm{position:absolute;top:50%;right:10px;transform:translateY(-50%);z-index:2;
+margin:0;padding:0;width:24px;height:24px;display:grid;place-items:center;cursor:pointer;touch-action:manipulation;
+background:#fff;color:#1a1a1a;border:1px solid #a5a5a5;border-radius:4px;font:700 17px/1 system-ui}
+.w .rm:hover,.w .rm:focus-visible{background:#fde8e8;color:#972018;border-color:#972018}
+@media(max-width:560px){.w{padding-left:4px;padding-right:24px}.w .rm{right:6px;width:16px;height:18px;font-size:14px}}
 </style>
 <script>
 const WI=%WIDGETS%,DEF="%DEFAULT%",T=%TEXTS%;let L=parse("%LAYOUT%");
@@ -988,14 +971,16 @@ function overlap(a,b){return a.x<b.x+b.w&&b.x<a.x+a.w&&a.y<b.y+b.h&&b.y<a.y+a.h}
 function bad(o){return L.some(p=>p!==o&&overlap(o,p))}
 function render(){grid.innerHTML='';let ok=true;for(const o of L){const d=document.createElement('div'),i=info(o.k),b=bad(o);ok=ok&&!b;
 d.className='w'+(b?' bad':'');pos(d,o);
-d.innerHTML=i.n+'<small>'+o.w+' × '+o.h+'</small><small>'+T.min+' '+i.mw+'×'+i.mh+' · '+T.max+' '+i.xw+'×'+i.xh+'</small>'+['n','s','e','w','nw','ne','sw','se'].map(e=>'<div class="rs" data-e="'+e+'"></div>').join('');d.title=i.n+': '+T.min+' '+i.mw+'×'+i.mh+', '+T.max+' '+i.xw+'×'+i.xh;drag(d,o);grid.appendChild(d)}
+d.innerHTML=i.n+'<small>'+o.w+' × '+o.h+'</small><small>'+T.min+' '+i.mw+'×'+i.mh+' · '+T.max+' '+i.xw+'×'+i.xh+'</small>'+['n','s','e','w','nw','ne','sw','se'].map(e=>'<div class="rs" data-e="'+e+'"></div>').join('');d.title=i.n+': '+T.min+' '+i.mw+'×'+i.mh+', '+T.max+' '+i.xw+'×'+i.xh;
+const remove=document.createElement('button');remove.type='button';remove.className='rm';remove.textContent='×';remove.title=T.remove+' '+i.n;remove.setAttribute('aria-label',remove.title);
+remove.onclick=()=>{L=L.filter(p=>p!==o);render()};d.append(remove);drag(d,o);grid.appendChild(d)}
 document.getElementById('save').disabled=!ok;st.textContent=ok?'':T.overlap;pal();if(ok&&window.pvReady)updPreview()}
 function pal(){const p=document.getElementById('pal');p.innerHTML='';for(const i of WI){const l=document.createElement('label'),c=document.createElement('input');c.type='checkbox';c.checked=L.some(o=>o.k==i.k);
 c.onchange=()=>{if(c.checked)add(i);else L=L.filter(o=>o.k!=i.k);render()};l.title=T.min+' '+i.mw+'×'+i.mh+', '+T.max+' '+i.xw+'×'+i.xh;l.append(c,i.n);p.appendChild(l)}}
 function free(o){return o.x>=0&&o.y>=0&&o.x+o.w<=C&&o.y+o.h<=R&&!L.some(p=>overlap(o,p))}
 function add(i){for(const[w,h]of[[i.dw,i.dh],[i.mw,i.mh]])for(let y=0;y+h<=R;y++)for(let x=0;x+w<=C;x++){const o={k:i.k,x,y,w,h};if(free(o)){L.push(o);return}}
 L.push({k:i.k,x:0,y:0,w:i.mw,h:i.mh});st.textContent=T.nospace}
-function drag(d,o){d.onpointerdown=e=>{e.preventDefault();d.setPointerCapture(e.pointerId);const rs=e.target.classList.contains('rs')?e.target.dataset.e:'',r=grid.getBoundingClientRect(),
+function drag(d,o){d.onpointerdown=e=>{if(e.target.closest('.rm'))return;e.preventDefault();d.setPointerCapture(e.pointerId);const rs=e.target.classList.contains('rs')?e.target.dataset.e:'',r=grid.getBoundingClientRect(),
 cw=r.width/C,ch=r.height/R,sx=e.clientX,sy=e.clientY,s={...o},i=info(o.k);
 d.onpointermove=m=>{const dx=Math.round((m.clientX-sx)/cw),dy=Math.round((m.clientY-sy)/ch);
 if(rs){// Ecke/Kante: die gegenueberliegende Seite bleibt stehen
@@ -1077,7 +1062,7 @@ static void handleLayoutPage() {
                                         "No free space – shrink something or use “Arrange automatically”.") +
                  "\",\"min\":\"" + L("min.", "min") + "\",\"max\":\"" + L("max.", "max") +
                  "\",\"loading\":\"" + L("Vorschau wird berechnet …", "Rendering preview …") + "\",\"err\":\"" +
-                 L("Vorschau fehlgeschlagen", "Preview failed") + "\"}";
+                 L("Vorschau fehlgeschlagen", "Preview failed") + "\",\"remove\":\"" + L("Entfernen:", "Remove:") + "\"}";
   String page = FPSTR(EDITOR);
   page.replace("%WIDGETS%", widgets);
   page.replace("%TEXTS%", texts);
@@ -1089,10 +1074,12 @@ static void handleLayoutPage() {
                              String(screenH()));
   page.replace("%T_TITLE%", L("Layout", "Layout"));
   page.replace("%T_HELP%",
-               L("Inhalte oben an- oder abwählen. Kästen verschieben, an den roten Ecken oder an den Kanten in der Größe ändern. "
+               L("Inhalte oben an- oder abwählen. Mit × lässt sich eine Kachel direkt im Entwurf entfernen. Erst „Speichern“ "
+                 "übernimmt die Änderung aufs Terminal. Kästen verschieben, an den roten Ecken oder an den Kanten in der Größe ändern. "
                  "„Automatisch anordnen“ verteilt die gewählten Inhalte lückenlos. „Vorschau“ zeigt das echte Bild, "
                  "ohne zu speichern. Neu hinzugefügte Inhalte (z. B. Preis-Chart) bekommen ihre Daten erst nach dem Speichern.",
-                 "Select widgets above. Drag boxes to move them, use the red corners or the edges to resize. “Arrange "
+                 "Select widgets above. Use × on a tile to remove it from the draft. “Save” applies changes to the display. "
+                 "Drag boxes to move them, use the red corners or the edges to resize. “Arrange "
                  "automatically” fills the screen without gaps. “Preview” shows the real image without saving. Newly added "
                  "widgets (e.g. the price chart) get their data after saving."));
   page.replace("%T_AUTO%", L("Automatisch anordnen", "Arrange automatically"));
@@ -1202,14 +1189,11 @@ body:JSON.stringify({off:[...S.offSet],edit:Object.values(S.editMap),own:S.own})
 // Teile je Kachel: Reihenfolge = Prioritaet, einzeln abschaltbar (Daten als JSON, Liste per JS)
 static const char PARTS_HTML[] PROGMEM = R"pt(<section id="parts"><h2>%T_TITLE%</h2><p class="hint">%T_HELP%</p>
 <p class="hint" id="plegend"></p>
-<p class="hint" id="pstatus" role="status"></p>
 <style>.pg{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:12px 0 4px;align-items:start}.pgcol{display:flex;flex-direction:column;gap:12px;min-width:0}
 @media(max-width:860px){.pg{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:560px){.pg{grid-template-columns:1fr}}
 #pchain{margin:12px 0 0}
 .pgc{border:1px solid var(--line);border-radius:8px;padding:8px 10px}.pgc.out{opacity:.6}.pgc h3{margin:2px 0 2px;font-size:15px}
 .pgi{font-size:12px;color:var(--mut);margin:0 0 6px}
-.ptile{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px 8px;padding:3px 0}
-.ptile button{font-size:12px;padding:3px 8px;margin:0}#pother{margin:10px 0}
 .pr{display:flex;align-items:center;gap:6px;padding:4px 0;border-top:1px solid var(--line)}
 .pr label{flex:1;margin:0;display:flex;gap:8px;align-items:center;font-weight:400;cursor:pointer}.pr.off label{opacity:.5}
 .pr input{width:auto;margin:0}.pr button{padding:2px 9px;margin:0;min-width:0;font-size:13px;background:none;color:var(--acc);border:1px solid var(--line)}
@@ -1222,25 +1206,16 @@ static const char PARTS_HTML[] PROGMEM = R"pt(<section id="parts"><h2>%T_TITLE%<
 .cg .pr label{min-width:0}.cg .pt{min-width:0;overflow-wrap:anywhere}
 @media(max-width:560px){.cg{column-gap:6px}.cg .pr{flex-wrap:wrap;gap:4px}.cg .pr label{flex:1 1 100%;gap:6px;font-size:14px}.cg .pr button{padding:1px 8px;font-size:12px}.cg h3{font-size:13px}}</style>
 <form method="post" action="/settings" id="pform"><input type="hidden" name="back" value="content"><input type="hidden" name="parts" id="pval">
-<div id="pchain"></div><div class="pg" id="pgrid"></div><div id="pother" class="pgc" hidden></div>
-<button>%T_SAVE%</button> <button type="button" id="pdef" class="sec">%T_DEF%</button></form></section>
-<script>(()=>{const G=%GROUPS%,cur='%CUR%',T=%TEXTS%,st={};let M=null,tm=0,measurement=0,removing=false;
+<div id="pchain"></div><div class="pg" id="pgrid"></div><button>%T_SAVE%</button> <button type="button" id="pdef" class="sec">%T_DEF%</button></form></section>
+<script>(()=>{const G=%GROUPS%,cur='%CUR%',T=%TEXTS%,st={};let M=null,tm=0;
 G.forEach(g=>{st[g.k]=g.p.map(p=>({k:p.k,on:true}))});
 cur.split(';').forEach(s=>{const i=s.indexOf(':');if(i<0)return;const k=s.slice(0,i),g=G.find(x=>x.k==k);if(!g)return;const l=[];
 s.slice(i+1).split(',').forEach(t=>{const off=t[0]=='-',kk=off?t.slice(1):t;if(g.p.some(p=>p.k==kk)&&!l.some(x=>x.k==kk))l.push({k:kk,on:!off})});
 g.p.forEach(p=>{if(!l.some(x=>x.k==p.k))l.push({k:p.k,on:true})});st[k]=l});
 const val=()=>G.map(g=>g.k+':'+st[g.k].map(x=>(x.on?'':'-')+x.k).join(',')).join(';');
-const grid=document.getElementById('pgrid'),other=document.getElementById('pother'),feedback=document.getElementById('pstatus');
+const grid=document.getElementById('pgrid');
 document.getElementById('plegend').textContent=T.legend;
-function measure(){clearTimeout(tm);const id=++measurement;if(removing)return;
-tm=setTimeout(()=>{fetch('/api/parts?p='+encodeURIComponent(val())).then(r=>r.json()).then(j=>{if(id==measurement){M=j;draw()}}).catch(()=>{})},250)}
-async function removeTile(w){if(removing)return;removing=true;clearTimeout(tm);++measurement;feedback.textContent='…';draw();
-try{const r=await fetch('/layout/remove',{method:'POST',body:new URLSearchParams({k:w.k,r:M.r})});feedback.textContent=await r.text();
-if(r.ok)M.w=M.w.filter(tile=>tile.k!=w.k)}catch(e){feedback.textContent=T.removeErr}
-finally{removing=false;draw();measure()}}
-function tileRow(w){const row=document.createElement('div'),name=document.createElement('span'),btn=document.createElement('button');
-row.className='ptile';name.textContent=w.t+' '+w.c;btn.type='button';btn.className='sec';btn.textContent=T.remove;
-btn.setAttribute('aria-label',w.t+' '+T.remove);btn.disabled=removing;btn.onclick=()=>removeTile(w);row.append(name,btn);return row}
+function measure(){clearTimeout(tm);tm=setTimeout(()=>{fetch('/api/parts?p='+encodeURIComponent(val())).then(r=>r.json()).then(j=>{M=j;draw(true)}).catch(()=>{})},250)}
 // Die beiden Blockketten-Gruppen gehoeren zur selben Kachel; gezeigt wird je Gruppe laut M.cs
 function wsOf(gi){const k=G[gi].k,gk=k=='chainmp'?G.findIndex(g=>g.k=='chain'):gi;return M.w.filter(w=>w.g==gk)}
 function status(gi,pi){if(!M)return null;const ws=wsOf(gi);if(!ws.length)return null;const k=G[gi].k;
@@ -1253,8 +1228,8 @@ if(!data.length)return['d',T.nodata];return['n',T.noroom]}
 const CH=['chain','chainmp'];
 function part(l){const a=l.filter(x=>x.on),b=l.filter(x=>!x.on);l.splice(0,l.length,...a,...b)}
 CH.forEach(k=>st[k]&&part(st[k]));
-function infoOf(gi,c,buttons=true){const info=document.createElement('div');info.className='pgi';
-if(M){const ws=wsOf(gi);if(ws.length){info.textContent=T.inl+' ('+M.o+')';if(buttons)ws.forEach(w=>info.append(tileRow(w)))}
+function infoOf(gi,c){const info=document.createElement('div');info.className='pgi';
+if(M){const ws=wsOf(gi);if(ws.length)info.textContent=T.inl+' ('+M.o+'): '+ws.map(w=>w.t+' '+w.c).join(', ');
 else{info.textContent=T.notin+' ('+M.o+')';c.classList.add('out')}}return info}
 function fixRow(g){const fx=document.createElement('div');fx.className='pr fix';fx.innerHTML='<label><span class="pt"><span></span><span class="ps f"></span></span></label>';
 fx.querySelector('.pt span').textContent='🔒 '+g.f;fx.querySelector('.ps').textContent=T.always;return fx}
@@ -1270,7 +1245,7 @@ lab.append(cb,tx);r.append(lab);const en=chain?l.filter(x=>x.on).length:l.length
 const j=i+d;b.disabled=(chain&&!it.on)||j<0||j>=en;b.onclick=()=>{[l[i],l[j]]=[l[j],l[i]];draw();measure()};r.append(b)});return r}
 function chainCard(){const gm=G.findIndex(g=>g.k=='chain'),gp=G.findIndex(g=>g.k=='chainmp'),c=document.createElement('div');c.className='pgc pgw';
 const cg=document.createElement('div');cg.className='cg';cg.append(document.createElement('span'));
-[gm,gp].forEach(gi=>{const hd=document.createElement('div');hd.className='cgh';const h=document.createElement('h3');h.textContent=G[gi].t;hd.append(h,infoOf(gi,c,gi==gm));cg.append(hd)});
+[gm,gp].forEach(gi=>{const hd=document.createElement('div');hd.className='cgh';const h=document.createElement('h3');h.textContent=G[gi].t;hd.append(h,infoOf(gi,c));cg.append(hd)});
 const lm=st.chain,lp=st.chainmp,rows=Math.max(1+lm.length,lp.length);
 for(let r=0;r<rows;r++){const left=r?lm[r-1]:null,right=lp[r];
 const nc=document.createElement('div');nc.className='pr';const nn=document.createElement('span');nn.className='pn';
@@ -1280,13 +1255,11 @@ cg.append(right?mkRow(G[gp],gp,lp,right,r,null,true):document.createElement('div
 const hn=document.createElement('div');hn.className='pgi';hn.style.marginTop='6px';hn.textContent=T.chainhint;c.append(cg,hn);return c}
 // Oben die breite Blockketten-Karte, darunter drei Spalten: Block-Daten, Netzwerk-Zyklen, Miner
 const COLS=[['block','mempool','hashrate'],['difficulty','halving','lightning'],['miner']];
-function draw(){grid.innerHTML='';const pc=document.getElementById('pchain');pc.innerHTML='';pc.append(chainCard());
+function draw(keep){grid.innerHTML='';const pc=document.getElementById('pchain');pc.innerHTML='';pc.append(chainCard());
 COLS.forEach(keys=>{const col=document.createElement('div');col.className='pgcol';keys.forEach(k=>{const gi=G.findIndex(g=>g.k==k);if(gi<0)return;const g=G[gi];
 const c=document.createElement('div');c.className='pgc';const h=document.createElement('h3');h.textContent=g.t;c.append(h,infoOf(gi,c));
 if(g.f)c.append(fixRow(g));
-const l=st[g.k];let n=0;l.forEach((it,i)=>c.append(mkRow(g,gi,l,it,i,it.on?++n+'.':'',false)));col.append(c)});grid.append(col)});
-const rest=M?M.w.filter(w=>w.g<0):[];other.replaceChildren();other.hidden=!rest.length;
-if(rest.length){const h=document.createElement('h3');h.textContent=T.other+' ('+M.o+')';other.append(h,...rest.map(tileRow))}}
+const l=st[g.k];let n=0;l.forEach((it,i)=>c.append(mkRow(g,gi,l,it,i,it.on?++n+'.':'',false)));col.append(c)});grid.append(col)})}
 draw();measure();
 document.getElementById('pform').onsubmit=()=>{document.getElementById('pval').value=val()};
 document.getElementById('pdef').onclick=()=>{if(!confirm(T.defq))return;G.forEach(g=>{st[g.k]=g.p.map(p=>({k:p.k,on:true}))});draw();measure()};})();</script>)pt";
@@ -1301,11 +1274,12 @@ static void handlePartsApi() {
   measureParts(layout, shown, have, chainSplit);
   if (tmp) parseParts(cfg.parts);
   String j = String("{\"o\":\"") + (portrait() ? L("Hochformat", "portrait") : L("Querformat", "landscape")) +
-             "\",\"r\":" + String(cfg.rotation) + ",\"cs\":[" + String(chainSplit[0]) + "," + String(chainSplit[1]) + "],\"w\":[";
+             "\",\"cs\":[" + String(chainSplit[0]) + "," + String(chainSplit[1]) + "],\"w\":[";
   bool first = true;
   for (int i = 0; i < layout.n; ++i) {
     const Slot &s = layout.s[i];
     const int g = partGroupOf((WidgetId)s.id);
+    if (g < 0) continue;
     if (!first) j += ',';
     first = false;
     j += String("{\"k\":\"") + WIDGETS[s.id].key + "\",\"t\":\"" + L(WIDGETS[s.id].de, WIDGETS[s.id].en) + "\",\"g\":" +
@@ -1386,8 +1360,7 @@ static void handleContentPage() {
                  "schieben), grau = keine Daten oder ausgeblendet. Die Anzeige rechnet mit der Auswahl hier, auch "
                  "bevor sie gespeichert ist.\",\"yes\":\"✓ sichtbar\",\"chainhint\":\"Jede Zeilennummer steht im Display in beiden Würfelarten auf derselben Höhe. Abgewählte Einträge rücken ans Ende.\",\"part\":\"◐ nur in\",\"noroom\":\"✗ kein "
                  "Platz\",\"nodata\":\"keine Daten\",\"off\":\"ausgeblendet\",\"always\":\"immer sichtbar\","
-                 "\"inl\":\"Im Layout\",\"notin\":\"Nicht im aktuellen Layout\",\"other\":\"Weitere Kacheln\","
-                 "\"remove\":\"Entfernen\",\"removeErr\":\"Entfernen fehlgeschlagen.\",\"up\":\"nach oben (wichtiger)\","
+                 "\"inl\":\"Im Layout\",\"notin\":\"Nicht im aktuellen Layout\",\"up\":\"nach oben (wichtiger)\","
                  "\"down\":\"nach unten (weniger wichtig)\",\"defq\":\"Alle Kacheln auf die Standard-Inhalte "
                  "zurücksetzen? (Erst mit „Speichern“ übernommen.)\"}",
                  "{\"legend\":\"Each entry shows whether it is visible in the current layout: green = visible, "
@@ -1395,8 +1368,7 @@ static void handleContentPage() {
                  "grey = no data or hidden. The check uses the selection here, even before it is saved.\","
                  "\"yes\":\"✓ visible\",\"chainhint\":\"Each row number appears at the same height in both kinds of cubes on the display. Unchecked entries move to the end.\",\"part\":\"◐ only in\",\"noroom\":\"✗ no room\",\"nodata\":\"no "
                  "data\",\"off\":\"hidden\",\"always\":\"always visible\",\"inl\":\"In layout\",\"notin\":\"Not "
-                 "in the current layout\",\"other\":\"Other tiles\",\"remove\":\"Remove\",\"removeErr\":\"Could not remove the tile.\","
-                 "\"up\":\"up (more important)\",\"down\":\"down (less important)\","
+                 "in the current layout\",\"up\":\"up (more important)\",\"down\":\"down (less important)\","
                  "\"defq\":\"Reset all tiles to the default contents? (Applied when you save.)\"}"));
     pt.replace("%T_SAVE%", L("Speichern", "Save"));
     pt.replace("%T_DEF%", L("Standard", "Defaults"));
@@ -1494,7 +1466,6 @@ void startWeb() {
   });
   server.on("/layout", HTTP_GET, handleLayoutPage);
   server.on("/layout", HTTP_POST, handleLayoutSave);
-  server.on("/layout/remove", HTTP_POST, handleLayoutRemove);
   server.on("/preview.bmp", HTTP_GET, handlePreview);
   server.on("/settings", HTTP_POST, handleSettings);
   server.on("/content", HTTP_GET, handleContentPage);

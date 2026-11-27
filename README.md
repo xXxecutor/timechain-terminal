@@ -29,7 +29,7 @@ Höchstgröße stehen im Editor an jedem Kasten):
 | Blockkette | links die letzten geminten Blöcke (schwarz) mit Gebührenspanne, rechts die nächsten Mempool-Blöcke (gelb); Anzahl passt sich der Breite an. Was die Würfel zeigen, wird für geminte und nächste Blöcke getrennt eingestellt (Seite „Inhalte“); gleiche Position in beiden Listen = gleiche Höhe im Display (bei den geminten Blöcken ist die Blockhöhe Zeile 1) |
 | Mempool, Hashrate, Difficulty, Halving, Lightning | Kacheln mit Wert und so vielen Zusatzangaben, wie Platz ist (z. B. „16.237 Knoten · 32.676 Kanäle“). Kacheln in derselben Reihe gleichen sich an: Überschriften, Werte (gleiche Schriftgröße) und Zusatzzeilen stehen auf einer Linie |
 | Preis-Chart | Kursverlauf in der Hauptwährung über 24 Stunden, 7, 30 oder 90 Tage, 1, 2 oder 4 Jahre oder den gesamten Verlauf (logarithmisch; mempool.space hat USD ab 2010, EUR ab 2013, GBP/JPY ab 2014, CHF ab 2019) |
-| Miner (alle) | Gesamt-Hashrate und auf Wunsch Gesamtleistung. Summen und Gerätewerte teilen sich das Zeilenraster. Gerätewerte stehen rechtsbündig mit gemeinsamen Spalten für Bezeichnungen, Zahlen und Hashrate-Einheiten. Je nach Platz passen mehrere Geräte nebeneinander oder auf mehrere Zeilen. Bei vielen Werten bekommt jeder Miner einen getrennten Bereich mit Kopfzeile und festem Raster für beschriftete Messwerte. Die Kachel zeigt aktivierte Messwerte in der Reihenfolge unter „Inhalte“. Fehlende Messdaten werden übersprungen. Sobald ein verfügbarer Wert aus Platzgründen entfällt, entfallen auch alle nachfolgenden Werte. Bei nur einem Miner wie „Miner 1“. „Inhalte“ zählt auch die Gesamtleistung als sichtbar. |
+| Miner (alle) | Gesamt-Hashrate und auf Wunsch Gesamtleistung. Summen und Gerätewerte teilen sich das Zeilenraster. Gerätewerte stehen rechtsbündig mit gemeinsamen Spalten für Bezeichnungen, Zahlen und Hashrate-Einheiten. Je nach Platz passen mehrere Geräte nebeneinander oder auf mehrere Zeilen. Höhere Kacheln vergleichen die Miner in einer gemeinsamen Tabelle. Jeder Messwert ist einmal beschriftet, jedes Gerät hat eine eigene Wertespalte. Die Kachel zeigt aktivierte Messwerte in der Reihenfolge unter „Inhalte“. Fehlende Messdaten werden übersprungen. Sobald ein verfügbarer Wert aus Platzgründen entfällt, entfallen auch alle nachfolgenden Werte. Bei nur einem Miner wie „Miner 1“. „Inhalte“ zählt auch die Gesamtleistung als sichtbar. |
 | Miner 1 – 4 | je ein Gerät mit AxeOS (Bitaxe, NerdQaxe …): Hashrate groß, dazu so viele Werte wie Platz ist (Spalten nach tatsächlicher Textbreite, rechts neben oder unter der Hashrate) – Temperatur, Leistung, Lüfter (%), Effizienz, Best Diff, Shares, Laufzeit, Best der Sitzung, VR-Temperatur, Frequenz, Abgelehnte, Lüfter-Drehzahl, Firmware-Version. „Update v…“ im Titelbalken, wenn auf GitHub eine neuere AxeOS-Version erschienen ist (Abfrage alle 6 Stunden) |
 | An diesem Tag | Bitcoin-Ereignis „heute vor X Jahren“ aus einer geprüften Liste von 86 Ereignissen (2008 bis 2025, siehe unten); ist heute nichts dabei, das nächste bevorstehende |
 
@@ -154,7 +154,6 @@ außerdem, wenn das Display gleich oder gerade neu gezeichnet wird (dann antwort
   (sichtbar / nur in einem Teil der Kacheln bzw. bei der Blockkette nur bei geminten oder nur bei
   den nächsten Blöcken / kein Platz / keine Daten); das Gerät rechnet das
   Layout dafür unsichtbar durch, schon während man umsortiert (`/api/parts`)
-* **Entfernen:** Neben jeder aktiven Kachel steht „Entfernen“. Die Kachel verschwindet direkt aus dem Layout der aktuellen Ausrichtung. Über „Layout & Farben“ lässt sie sich wieder hinzufügen.
 * **Ereignisse für „Heute vor X Jahren“:** alle eingebauten Ereignisse mit Suche, Filter
   (aktiv, ausgeblendet, eigene, geänderte) und Sortierung (chronologisch oder nach Kalendertag).
   Jedes lässt sich ausblenden oder bearbeiten (Datum, Text Deutsch/Englisch) und wieder auf das
@@ -163,6 +162,7 @@ außerdem, wenn das Display gleich oder gerade neu gezeichnet wird (dann antwort
   das Display zeigt Änderungen nach einer Minute.
 
 **Layout &amp; Farben**
+* **Kacheln entfernen:** Das × im jeweiligen Kasten entfernt ihn aus dem Entwurf. Erst „Speichern“ übernimmt das Layout der aktuellen Ausrichtung aufs Terminal.
 * **Ausrichtung und Kopfzeile:** Quer/hoch, Kurs und QR-Code in der Kopfzeile
 * **Layout:** Inhalte an-/abwählen, Kästen auf dem Raster verschieben und an allen vier Ecken und
   Kanten in der Größe ändern (die gegenüberliegende Seite bleibt stehen); „Automatisch anordnen“ verteilt die gewählten Inhalte lückenlos

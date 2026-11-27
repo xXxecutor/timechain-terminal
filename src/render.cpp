@@ -1498,7 +1498,7 @@ static void minerSingle(int x, int y, int w, int h, int idx) {
 }
 
 // Alle Inhalte teilen sich Schriftgröße, Grundlinien und Zeilenabstand.
-static constexpr int MINER_FIELDS = 16, MINER_GAP = 6, MINER_LABEL_GAP = 3, MINER_GROUP_PAD = 6;
+static constexpr int MINER_FIELDS = 16, MINER_GAP = 6, MINER_LABEL_GAP = 3;
 struct MinerRow {
   String name, hash, value[MINER_FIELDS];
   const char *hashUnit = nullptr;
@@ -1508,6 +1508,110 @@ struct MinerType {
   const uint8_t *regular, *bold;
   int size, pitch;
 };
+static const MinerType MINER_TYPES[] = {
+    {F_(helvR24_te), F_(helvB24_te), 24, 36}, {F_(helvR18_te), F_(helvB18_te), 18, 27},
+    {F_(helvR14_te), F_(helvB14_te), 14, 21}, {F_(helvR12_te), F_(helvB12_te), 12, 16},
+    {F_(helvR10_te), F_(helvB10_te), 10, 14}, {F_(helvR08_te), F_(helvB08_te), 8, 12}};
+
+static bool minerHasInlineLabel(int part) { return part != 0 && part != 1 && part != 3 && part != 9; }
+
+// Vergleich: eine Beschriftung pro Messwert, eine Wertespalte pro Gerät.
+static constexpr int MINER_COMPARE_PAD = 6;
+struct MinerComparison {
+  const MinerType *type = nullptr;
+  int fields = 0;
+  int right[MAX_MINERS], width[MAX_MINERS];
+  uint8_t parts[MINER_FIELDS];
+  bool showPower = false;
+};
+
+static MinerComparison fitMinerComparison(const MinerRow *miners, int count, const char *const *labels,
+                                         const uint8_t *order, int n, uint16_t available,
+                                         const String &total, const String &power, int w, int h) {
+  MinerComparison best;
+  for (const auto &font : MINER_TYPES) {
+    const int maxFields = (h - MINER_COMPARE_PAD) / font.pitch - 3;
+    if (font.size < 10 || maxFields < 4 || textWidth(total, font.bold) > w) continue;
+    MinerComparison c;
+    c.type = &font;
+    int labelW = textWidth("Hashrate", font.regular), used = labelW;
+    for (int i = 0; i < count; ++i) {
+      const MinerRow &m = miners[i];
+      const int hashW = textWidth(m.hash, font.regular) +
+                        (m.hashUnit ? MINER_LABEL_GAP + textWidth(m.hashUnit, font.regular) : 0);
+      c.width[i] = max(hashW, min(30, textWidth(m.name, font.bold)));
+      used += c.width[i] + MINER_GAP;
+    }
+    if (used > w) continue;
+    for (int j = 0; j < n && c.fields < maxFields; ++j) {
+      const int part = order[j];
+      if (!(available & (1U << part))) continue;
+      if (part == 1 && power.length())
+        c.showPower = textWidth(total, font.bold) + MINER_GAP + textWidth(power, font.bold) <= w;
+      const int nextLabel = max(labelW, textWidth(labels[part], font.regular));
+      int nextW[MAX_MINERS], nextUsed = nextLabel;
+      for (int i = 0; i < count; ++i) {
+        nextW[i] = max(c.width[i], textWidth(miners[i].value[part], font.regular));
+        nextUsed += nextW[i] + MINER_GAP;
+      }
+      if (nextUsed > w) break;
+      labelW = nextLabel;
+      used = nextUsed;
+      for (int i = 0; i < count; ++i) c.width[i] = nextW[i];
+      c.parts[c.fields++] = part;
+    }
+    if (c.fields < 4 || c.fields < best.fields) continue;
+    if (c.fields == best.fields && (best.showPower || !c.showPower)) continue;
+    int edge = labelW;
+    for (int i = 0; i < count; ++i) {
+      const int extra = (w - used) * (i + 1) / count - (w - used) * i / count;
+      c.width[i] += extra;
+      edge += MINER_GAP + c.width[i];
+      c.right[i] = edge;
+    }
+    best = c;
+  }
+  return best;
+}
+
+static void drawMinerComparison(const MinerRow *miners, int count, const char *const *labels,
+                                const MinerComparison &c, const String &total, const String &power,
+                                int x, int y, int w, int h) {
+  const auto &font = *c.type;
+  u8g2.setFont(font.bold);
+  const int boldAscent = u8g2.getFontAscent(), boldDescent = -u8g2.getFontDescent();
+  u8g2.setFont(font.regular);
+  const int ascent = max(boldAscent, (int)u8g2.getFontAscent());
+  const int descent = max(boldDescent, -(int)u8g2.getFontDescent());
+  const int rows = c.fields + 3, bodyH = h - MINER_COMPARE_PAD;
+  const int pitch = min(font.pitch + 5, bodyH / rows);
+  const int base = y + (bodyH - rows * pitch) / 2 + (pitch + ascent - descent) / 2;
+  const int hashY = base + 2 * pitch + MINER_COMPARE_PAD;
+  text(x, base, total, font.bold, col(C_TEXT));
+  if (c.showPower) {
+    text(x + textWidth(total, font.bold) + MINER_GAP, base, power, font.bold, col(C_TEXT));
+    markPart(1);
+  }
+  gfx->drawFastHLine(x, hashY - (pitch + ascent - descent + MINER_COMPARE_PAD) / 2, w, col(C_BORDER));
+  text(x, hashY, "Hashrate", font.regular, col(C_TITLE));
+  for (int i = 0; i < count; ++i) {
+    const MinerRow &m = miners[i];
+    const int right = x + c.right[i];
+    text(right, base + pitch, truncate(m.name, font.bold, c.width[i], true), font.bold, col(C_TITLE), RIGHT);
+    const auto ink = col(m.online ? C_TEXT : C_TITLE);
+    const int unitsW = m.hashUnit ? MINER_LABEL_GAP + textWidth(m.hashUnit, font.regular) : 0;
+    text(right - unitsW, hashY, m.hash, font.regular, ink, RIGHT);
+    if (m.hashUnit) text(right, hashY, m.hashUnit, font.regular, ink, RIGHT);
+  }
+  for (int j = 0; j < c.fields; ++j) {
+    const int part = c.parts[j], yy = hashY + (j + 1) * pitch;
+    text(x, yy, labels[part], font.regular, col(C_TITLE));
+    for (int i = 0; i < count; ++i)
+      if (miners[i].value[part].length()) text(x + c.right[i], yy, miners[i].value[part], font.regular, col(C_TEXT), RIGHT);
+    markPart(part);
+  }
+}
+
 struct MinerWidths {
   int name = 0, hash = 0, hashUnit = 0, offline = 0, value[MINER_FIELDS] = {};
 };
@@ -1520,7 +1624,7 @@ struct MinerTable {
   MinerSummary summary = SUM_ABOVE;
   bool showPower = false;
   int cols = 0, shown = 0, rows = 0, width = 0, gap = 0, offset = 0;
-  int nameWidth = 0, hashRight = 0, hashUnitWidth = 0, lines = 1, fields = 0, primary = 0, detailCols = 0;
+  int nameWidth = 0, hashRight = 0, hashUnitWidth = 0, lines = 1, fields = 0, primary = 0;
   uint16_t priority = 0;
   MinerCell cells[MINER_FIELDS];
 };
@@ -1531,9 +1635,6 @@ static bool betterMinerTable(const MinerTable &a, const MinerTable &b) {
   // Unter 10 Punkt nur gehen, wenn sonst wichtige Angaben oder ganze Geräte fehlen.
   const bool readableA = a.type->size >= 10, readableB = b.type->size >= 10;
   if (readableA != readableB) return readableA;
-  // Wo mehrere Angaben übersichtlich ins Raster passen, bekommt jedes Gerät eine Kopfzeile.
-  const bool detailA = a.detailCols > 0, detailB = b.detailCols > 0;
-  if (detailA != detailB) return detailA;
   if (a.fields != b.fields) return a.fields > b.fields;
   if (a.showPower != b.showPower) return a.showPower;
   if (a.type->size != b.type->size) return a.type->size > b.type->size;
@@ -1542,20 +1643,14 @@ static bool betterMinerTable(const MinerTable &a, const MinerTable &b) {
   return a.cols < b.cols;
 }
 
-static bool minerHasLabel(int part, bool details) {
-  return details || (part != 0 && part != 1 && part != 3 && part != 9);
-}
-
-static bool fitMinerFields(MinerTable &t, const MinerWidths &m, const int *labelWidth,
-                           const uint8_t *order, int n, uint16_t available, int maxLines) {
+static bool fitMinerFields(MinerTable &t, const MinerWidths &m, const uint8_t *order, int n,
+                           uint16_t available, int maxLines) {
   const int fullName = m.name + MINER_GAP;
   const int minName = min(fullName, t.width < 100 ? max(20, t.type->size + MINER_GAP) : 48);
   t.hashUnitWidth = m.hashUnit;
   const int hashWidth = max(m.offline, m.hash + (m.hashUnit ? MINER_LABEL_GAP + m.hashUnit : 0));
   t.hashRight = minName + hashWidth;
   if (t.hashRight > t.width) return false;
-  const bool details = t.detailCols > 0;
-  const int cellWidth = details ? (t.width - (t.detailCols - 1) * t.gap) / t.detailCols : 0;
   bool powerReached = false;
   int line = 0, used = t.hashRight, firstEnd = used;
   for (int i = 0; i < n; ++i) {
@@ -1563,57 +1658,40 @@ static bool fitMinerFields(MinerTable &t, const MinerWidths &m, const int *label
     if (!(available & (1U << part))) continue;
     if (part == 1) powerReached = true;
     // Sobald ein verfügbarer Wert nicht mehr hineinpasst, endet die Prioritätsliste.
-    if (!m.value[part]) break;
-    const int width = m.value[part] + (minerHasLabel(part, details) ? labelWidth[part] : 0);
-    if (details) {
-      line = 1 + t.fields / t.detailCols;
-      if (line >= maxLines || width > cellWidth) break;
-      const int right = t.width - (t.detailCols - 1 - t.fields % t.detailCols) * (cellWidth + t.gap);
-      t.cells[t.fields] = {part, line, right, cellWidth};
-    } else {
-      if (used + MINER_GAP + width > t.width) {
-        if (line + 1 >= maxLines || width > t.width) break;
-        ++line;
-        used = 0;
-      }
-      used += (used ? MINER_GAP : 0) + width;
-      if (!line) firstEnd = used;
-      t.cells[t.fields] = {part, line, used, width};
+    const int width = m.value[part];
+    if (!width) break;
+    if (used + MINER_GAP + width > t.width) {
+      if (line + 1 >= maxLines || width > t.width) break;
+      ++line;
+      used = 0;
     }
-    t.lines = 1 + line;
-    ++t.fields;
+    used += (used ? MINER_GAP : 0) + width;
+    if (!line) firstEnd = used;
+    t.cells[t.fields++] = {part, line, used, width};
     t.priority |= 1U << (n - i - 1);
     if (part < 2) ++t.primary;
-  }
-  if (details) {
-    t.hashRight = t.width;
-    t.nameWidth = min(m.name, t.width - hashWidth - MINER_GAP);
-    return powerReached;
   }
   const int moreName = min(fullName - minName, t.width - firstEnd);
   t.hashRight += moreName;
   t.nameWidth = t.hashRight - hashWidth - MINER_GAP;
   for (int i = 0; i < t.fields && !t.cells[i].line; ++i) t.cells[i].right += moreName;
+  t.lines = line + 1;
   return powerReached;
 }
 
 static MinerTable fitMinerTable(const MinerRow *miners, int count, const char *const *labels,
                                const uint8_t *order, int n, uint16_t available,
                                const String &total, const String &power, int w, int h) {
-  static const MinerType fonts[] = {
-      {F_(helvR24_te), F_(helvB24_te), 24, 36}, {F_(helvR18_te), F_(helvB18_te), 18, 27},
-      {F_(helvR14_te), F_(helvB14_te), 14, 21}, {F_(helvR12_te), F_(helvB12_te), 12, 16},
-      {F_(helvR10_te), F_(helvB10_te), 10, 14}, {F_(helvR08_te), F_(helvB08_te), 8, 12}};
   const int gap = w < 200 ? 8 : 16;
   MinerTable best;
-  for (const auto &font : fonts) {
+  for (const auto &font : MINER_TYPES) {
     const int lines = h / font.pitch;
     if (!lines) continue;
     const int totalW = textWidth(total, font.bold), powerW = textWidth(power, font.bold);
     int labelWidth[MINER_FIELDS] = {};
     for (int j = 0; j < n; ++j) {
       const int part = order[j];
-      if (labels[part]) labelWidth[part] = textWidth(labels[part], font.regular) + MINER_LABEL_GAP;
+      if (labels[part] && minerHasInlineLabel(part)) labelWidth[part] = textWidth(labels[part], font.regular) + MINER_LABEL_GAP;
     }
     MinerWidths widths[MAX_MINERS];
     for (int i = 0; i < count; ++i) {
@@ -1630,7 +1708,7 @@ static MinerTable fitMinerTable(const MinerRow *miners, int count, const char *c
       for (int j = 0; j < n; ++j) {
         const int part = order[j];
         if (m.value[part].length())
-          a.value[part] = max(a.value[part], textWidth(m.value[part], font.regular));
+          a.value[part] = max(a.value[part], labelWidth[part] + textWidth(m.value[part], font.regular));
       }
     }
     for (bool showPower : {true, false}) {
@@ -1648,28 +1726,20 @@ static MinerTable fitMinerTable(const MinerRow *miners, int count, const char *c
             const int groups = (shown + cols - 1) / cols;
             const int maxLines = tableLines / groups;
             if (!maxLines) continue;
-            const int width = (w - offset - (cols - 1) * gap) / cols;
-            const int detailLines = (h - font.pitch - groups * MINER_GROUP_PAD) / (groups * font.pitch);
-            const int detailMax = above && detailLines >= 2 ? min(4, width / 50) : 0;
-            for (int detailCols = 0; detailCols <= detailMax; ++detailCols) {
-              MinerTable t;
-              t.type = &font;
-              t.summary = summary;
-              t.showPower = showPower;
-              t.shown = shown;
-              t.cols = cols;
-              t.width = width;
-              t.gap = gap;
-              t.offset = w - cols * width - (cols - 1) * gap;
-              t.detailCols = detailCols;
-              const int lineLimit = detailCols ? detailLines : maxLines;
-              const bool powerReached = fitMinerFields(t, widths[shown - 1], labelWidth, order, n, available, lineLimit);
-              if (t.hashRight > t.width || (showPower && !powerReached)) continue;
-              if (detailCols && t.fields < 4) continue;
-              t.rows = groups * t.lines + above;
-              if (summary == SUM_SIDE && t.rows < 2) continue;
-              if (!best.shown || betterMinerTable(t, best)) best = t;
-            }
+            MinerTable t;
+            t.type = &font;
+            t.summary = summary;
+            t.showPower = showPower;
+            t.shown = shown;
+            t.cols = cols;
+            t.width = (w - offset - (cols - 1) * gap) / cols;
+            t.gap = gap;
+            t.offset = w - cols * t.width - (cols - 1) * gap;
+            const bool powerReached = fitMinerFields(t, widths[shown - 1], order, n, available, maxLines);
+            if (t.hashRight > t.width || (showPower && !powerReached)) continue;
+            t.rows = groups * t.lines + above;
+            if (summary == SUM_SIDE && t.rows < 2) continue;
+            if (!best.shown || betterMinerTable(t, best)) best = t;
           }
         }
       }
@@ -1686,11 +1756,8 @@ static void drawMinerTable(const MinerRow *miners, const char *const *labels, co
   u8g2.setFont(font.regular);
   const int ascent = max(boldAscent, (int)u8g2.getFontAscent());
   const int descent = max(boldDescent, -(int)u8g2.getFontDescent());
-  const bool details = t.detailCols > 0;
-  const int groupPad = details ? MINER_GROUP_PAD : 0;
-  const int rowH = h - groupPad * ((t.shown + t.cols - 1) / t.cols);
-  const int pitch = min(font.pitch + 6, rowH / t.rows);
-  const int base = y + (rowH - t.rows * pitch) / 2 + (pitch + ascent - descent) / 2;
+  const int pitch = min(font.pitch + 6, h / t.rows);
+  const int base = y + (h - t.rows * pitch) / 2 + (pitch + ascent - descent) / 2;
   text(x, base, hash, font.bold, col(C_TEXT));
   if (t.showPower) {
     if (t.summary == SUM_SIDE) text(x, base + pitch, power, font.bold, col(C_TEXT));
@@ -1704,12 +1771,11 @@ static void drawMinerTable(const MinerRow *miners, const char *const *labels, co
   for (int i = 0; i < t.shown; ++i) {
     const MinerRow &m = miners[i];
     const int lx = x + t.offset + (i % t.cols) * (t.width + t.gap);
-    const int yy = tableBase + (i / t.cols) * (t.lines * pitch + groupPad) + groupPad;
+    const int yy = tableBase + (i / t.cols) * t.lines * pitch;
     const uint16_t ink = col(m.online ? C_TEXT : C_TITLE);
-    const int nameLeft = details ? lx : lx + t.width - lineEnd[0];
+    const int nameLeft = lx + t.width - lineEnd[0];
     const int hashRight = nameLeft + t.hashRight;
-    if (details) gfx->drawFastHLine(lx, yy - (pitch + ascent - descent + groupPad) / 2, t.width, col(C_BORDER));
-    text(nameLeft, yy, truncate(m.name, font.regular, t.nameWidth, true), font.regular, details ? col(C_TITLE) : ink);
+    text(nameLeft, yy, truncate(m.name, font.regular, t.nameWidth, true), font.regular, ink);
     if (m.online) {
       text(hashRight - t.hashUnitWidth - MINER_LABEL_GAP, yy, m.hash, font.regular, ink, RIGHT);
       text(hashRight, yy, m.hashUnit, font.regular, ink, RIGHT);
@@ -1719,9 +1785,9 @@ static void drawMinerTable(const MinerRow *miners, const char *const *labels, co
     for (int j = 0; j < t.fields && m.online; ++j) {
       const MinerCell &cell = t.cells[j];
       if (!m.value[cell.part].length()) continue;
-      const int right = lx + (details ? 0 : t.width - lineEnd[cell.line]) + cell.right;
+      const int right = lx + t.width - lineEnd[cell.line] + cell.right;
       const int cy = yy + cell.line * pitch;
-      if (labels[cell.part] && minerHasLabel(cell.part, details))
+      if (labels[cell.part] && minerHasInlineLabel(cell.part))
         text(right - cell.width, cy, labels[cell.part], font.regular, ink);
       text(right, cy, m.value[cell.part], font.regular, ink, RIGHT);
       markPart(cell.part);
@@ -1778,6 +1844,10 @@ static void minerAll(int x, int y, int w, int h) {
 
   const String hash = fmtHash(total);
   const String pw = online && partEnabled(W_MINER, 1) ? fmtDec(power, 0) + " W" : String();
+  if (data.nMiners >= 2) {
+    const MinerComparison comparison = fitMinerComparison(rows, data.nMiners, labels, order, n, available, hash, pw, iw, ch);
+    if (comparison.fields) return drawMinerComparison(rows, data.nMiners, labels, comparison, hash, pw, ix, cy, iw, ch);
+  }
   const MinerTable table = fitMinerTable(rows, data.nMiners, labels, order, n, available, hash, pw, iw, ch);
   if (table.shown) return drawMinerTable(rows, labels, table, hash, pw, ix, cy, ch);
   const auto *f = F_(helvB12_te);
