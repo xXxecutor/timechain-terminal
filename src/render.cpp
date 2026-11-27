@@ -1336,13 +1336,13 @@ static String fmtHash(float ghs, int dec = 2) {
 
 // Hashrate gross: erst kleinere Schrift, dann weniger Nachkommastellen
 struct HashFit { String s; const uint8_t *f; int h; };
-static HashFit fitHash(float ghs, int maxW, bool flat) {
+static HashFit fitHash(float ghs, int maxW, int maxH) {
   static const struct { const uint8_t *f; int h; } FS[] = {
       {F_(helvB24_te), 24}, {F_(helvB18_te), 18}, {F_(helvB14_te), 14}, {F_(helvB12_te), 12}};
   for (int dec = 2; dec >= 0; --dec) {
     String v = fmtHash(ghs, dec);
-    for (int i = flat ? 1 : 0; i < 4; ++i)
-      if (textWidth(v, FS[i].f) <= maxW) return {v, FS[i].f, FS[i].h};
+    for (const auto &size : FS)
+      if (size.h <= maxH && textWidth(v, size.f) <= maxW) return {v, size.f, size.h};
   }
   return {truncate(fmtHash(ghs, 0), FS[3].f, maxW), FS[3].f, 12};
 }
@@ -1476,7 +1476,7 @@ static void minerSingle(int x, int y, int w, int h, int idx) {
   const int nf = minerFieldList(*m, fields, 16);
   // Hashrate gross, dazu das Raster - darunter (hohe Kachel) oder rechts daneben (breite, flache
   // Kachel), je nachdem, wo mehr Werte hineinpassen
-  HashFit hfit = fitHash(m->hashrate, iw, ch < 50);
+  HashFit hfit = fitHash(m->hashrate, iw, ch < 50 ? 18 : 24);
   const int hh = hfit.h, hw = textWidth(hfit.s, hfit.f);
   FieldGrid below = packFields(fields, nf, iw, ch - hh - 12);
   FieldGrid side = packFields(fields, nf, iw - hw - 18, ch - 2);
@@ -1496,79 +1496,155 @@ static void minerSingle(int x, int y, int w, int h, int idx) {
   drawFields(fields, below, ix, top + hh + 8, below.rows * below.cellH);
 }
 
+// Werte pro Miner einmal formatieren, dann mit den tatsächlichen Textbreiten planen.
+struct MinerRow {
+  String name, hash, value[2];
+  bool online;
+};
+
+struct MinerTable {
+  const uint8_t *font = nullptr;
+  int pitch = 0, cols = 0, rows = 0, shown = 0, width = 0;
+  int hashW = 0, valueW[2] = {0, 0};
+  int fields = 0;
+};
+
+static bool betterMinerTable(const MinerTable &a, const MinerTable &b) {
+  if (a.shown != b.shown) return a.shown > b.shown;
+  if (a.fields != b.fields) return a.fields > b.fields;
+  return a.pitch > b.pitch;
+}
+
+static MinerTable fitMinerTable(const MinerRow *miners, int n, const uint8_t *order, int fields, int w, int h) {
+  static const struct { const uint8_t *font; int pitch; } fonts[] = {
+      {F_(helvR18_te), 26}, {F_(helvR14_te), 21}, {F_(helvR12_te), 16}, {F_(helvR10_te), 14}, {F_(helvR08_te), 12}};
+  const int gap = 12;
+  MinerTable best;
+  for (const auto &size : fonts) {
+    const int rowsFit = h / size.pitch;
+    if (rowsFit <= 0) continue;
+    for (int cols = 1; cols <= n; ++cols) {
+      MinerTable t;
+      t.font = size.font;
+      t.pitch = size.pitch;
+      t.cols = cols;
+      t.shown = min(n, rowsFit * cols);
+      t.rows = (t.shown + cols - 1) / cols;
+      t.width = (w - (cols - 1) * gap) / cols;
+      int nameW = 0, valueW[2] = {0, 0};
+      for (int i = 0; i < t.shown; ++i) {
+        const MinerRow &m = miners[i];
+        nameW = max(nameW, min(48, textWidth(m.name, t.font)));
+        t.hashW = max(t.hashW, textWidth(m.hash, t.font) + 8);
+        for (int f = 0; f < fields && m.online; ++f) {
+          const int part = order[f];
+          valueW[part] = max(valueW[part], textWidth(m.value[part], t.font) + 8);
+        }
+      }
+      int used = nameW + t.hashW;
+      if (used > t.width) continue;
+      for (int f = 0; f < fields; ++f) {
+        const int part = order[f];
+        if (!valueW[part] || used + valueW[part] > t.width) break;
+        t.valueW[part] = valueW[part];
+        used += valueW[part];
+        ++t.fields;
+      }
+      if (betterMinerTable(t, best)) best = t;
+    }
+  }
+  return best;
+}
+
+static void drawMinerTable(const MinerRow *miners, const MinerTable &t, const uint8_t *order, int x, int y, int h) {
+  const int top = y + (h - t.rows * t.pitch) / 2;
+  const int nameW = t.width - t.hashW - t.valueW[0] - t.valueW[1];
+  for (int i = 0; i < t.shown; ++i) {
+    const MinerRow &m = miners[i];
+    const int lx = x + (i % t.cols) * (t.width + 12);
+    const int yy = top + (i / t.cols + 1) * t.pitch - 4;
+    const uint16_t ink = col(m.online ? C_TEXT : C_TITLE);
+    text(lx, yy, truncate(m.name, t.font, nameW, true), t.font, ink);
+    int rx = lx + nameW + t.hashW;
+    text(rx, yy, m.hash, t.font, ink, RIGHT);
+    for (int f = 0; f < t.fields && m.online; ++f) {
+      const int part = order[f];
+      rx += t.valueW[part];
+      text(rx, yy, m.value[part], t.font, ink, RIGHT);
+      markPart(part);
+    }
+  }
+}
+
 static void minerAll(int x, int y, int w, int h) {
   const int configured = configuredMiners();
   if (configured <= 1) return minerSingle(x, y, w, h, 0);
+  MinerRow rows[MAX_MINERS];
   int online = 0;
   float total = 0, power = 0;
-  for (int i = 0; i < data.nMiners; ++i)
-    if (data.miners[i].ok) ++online, total += data.miners[i].hashrate, power += data.miners[i].power;
   bool upd = false;
-  for (int i = 0; i < data.nMiners; ++i) upd = upd || minerUpdateAvailable(data.miners[i]);
+  for (int i = 0; i < data.nMiners; ++i) {
+    const MinerInfo &m = data.miners[i];
+    MinerRow &row = rows[i];
+    row.name = m.name;
+    row.online = m.ok;
+    row.hash = m.ok ? fmtHash(m.hashrate) : String(L("offline", "offline"));
+    if (m.ok) {
+      ++online;
+      total += m.hashrate;
+      power += m.power;
+      row.value[0] = fmtDec(m.temp, 0) + " °C";
+      row.value[1] = fmtDec(m.power, 0) + " W";
+    }
+    upd = upd || minerUpdateAvailable(m);
+  }
   String unit = String(online) + "/" + String(configured) + " online";
   if (upd && textWidth(unit + " · Update", F_(helvR10_te)) + 90 <= w) unit += " · Update";
-  int bar = drawBox(x, y, w, h, "MINER", unit);
-  const int cy = y + bar, ch = h - bar - 2, ix = x + 10, iw = w - 20;
+  const int bar = drawBox(x, y, w, h, "MINER", unit);
+  const int topPad = 4, bottomPad = 4;  // Innenabstand zum Titelbalken und Rahmen
+  const int cy = y + bar + topPad, ch = h - bar - topPad - bottomPad;
+  const int ix = x + 10, iw = w - 20;
   if (!data.nMiners) {
     noData();
     return note(x, cy, w, ch, L("Daten folgen", "Loading data"));
   }
-  HashFit hfit = fitHash(total, iw, ch < 50);
-  const int hh = hfit.h, hw = textWidth(hfit.s, hfit.f);
-  // Liste: Name | Hashrate | Temperatur | Leistung, bei breiten Kacheln in zwei Spalten
-  const uint8_t *rf = (ch >= 160 && w >= 360) ? F_(helvR14_te) : F_(helvR12_te);
-  const int pitch = rf == F_(helvR14_te) ? 24 : 19;
-  int cTemp = 0, cHash = 0, cPow = 0;
-  for (int i = 0; i < data.nMiners; ++i) {
-    const MinerInfo &m = data.miners[i];
-    if (!m.ok) continue;
-    if (partEnabled(W_MINER, 0)) cTemp = max(cTemp, textWidth(fmtDec(m.temp, 0) + " °C", rf) + 14);
-    cHash = max(cHash, textWidth(fmtHash(m.hashrate), rf) + 14);
-    if (partEnabled(W_MINER, 1)) cPow = max(cPow, textWidth(fmtDec(m.power, 0) + " W", rf) + 14);
-  }
-  const int colGap = 24;
-  const int fullItem = 90 + cHash + cTemp + cPow;
-  const int listCols = constrain((iw + colGap) / (fullItem + colGap), 1, 2);
-  const int colW = (iw - (listCols - 1) * colGap) / listCols;
-  const int rowsFit = max(0, (ch - hh - 14) / pitch);
-  const int cap = rowsFit * listCols;
-  int shown = min(data.nMiners, cap);
-  bool more = shown < data.nMiners && cap >= 2;  // letzter Platz fuer "+N weitere"
-  if (more) --shown;
-  const int rows = (shown + (more ? 1 : 0) + listCols - 1) / listCols;
-  const int top = cy + max(0, (ch - (hh + (rows ? 8 + rows * pitch : 0))) / 2);
-  const int base = top + hh;
-  text(ix, base, hfit.s, hfit.f, col(C_TEXT));
-  String pw = fmtDec(power, 0) + " W";
-  if (hw + 16 + textWidth(pw, F_(helvR12_te)) <= iw) text(x + w - 10, base, pw, F_(helvR12_te), col(C_TEXT), RIGHT);
-  // Name braucht mindestens 70 px; Spalten fallen von rechts nach links weg
-  bool showTemp = cTemp > 0, showPow = cPow > 0;
-  if (colW - cHash - cTemp - cPow < 70) showPow = false;
-  if (colW - cHash - cTemp < 70) showTemp = false;
-  int nameW = colW - cHash - (showTemp ? cTemp : 0) - (showPow ? cPow : 0);
-  bool showHash = nameW >= 40;
-  if (!showHash) nameW = colW;
-  for (int i = 0; i < shown + (more ? 1 : 0); ++i) {
-    const int c = i / rows, r = i % rows;  // spaltenweise fuellen
-    const int lx = ix + c * (colW + colGap), rx0 = lx + colW;
-    const int yy = base + 8 + (r + 1) * pitch - 4;
-    if (i == shown) {
-      text(lx, yy, "+" + String(data.nMiners - shown) + L(" weitere", " more"), rf, col(C_TITLE));
-      break;
+  if (!online) noData();
+  uint8_t enabled[16], order[2];
+  const int n = enabledParts(W_MINER, enabled, 16);
+  int fields = 0;
+  for (int i = 0; i < n; ++i)
+    if (enabled[i] < 2) order[fields++] = enabled[i];
+
+  const auto *pf = F_(helvR12_te);
+  const String pw = fmtDec(power, 0) + " W";
+  const int pwW = online && partEnabled(W_MINER, 1) ? textWidth(pw, pf) : 0;
+  const HashFit hash = fitHash(total, iw, ch < 50 ? 18 : 24);
+  const int powerLine = 14;
+  const HashFit sideHash = fitHash(total, iw, pwW && ch < 18 + powerLine + 2 ? 14 : 18);
+  const int summaryW = max(pwW, textWidth(sideHash.s, sideHash.f));
+  const int sideW = summaryW + 18;
+  // Flache Kacheln können die Liste neben der Summe zeigen, hohe darunter.
+  const MinerTable below = fitMinerTable(rows, data.nMiners, order, fields, iw, ch - hash.h - 8);
+  const MinerTable side = fitMinerTable(rows, data.nMiners, order, fields, iw - sideW, ch);
+  if (betterMinerTable(side, below)) {
+    const bool showPower = pwW && ch >= sideHash.h + powerLine;
+    const int base = cy + (ch + sideHash.h - (showPower ? powerLine : 0)) / 2;
+    text(ix, base, sideHash.s, sideHash.f, col(C_TEXT));
+    if (showPower) {
+      text(ix, base + powerLine, pw, pf, col(C_TEXT));
+      markPart(1);
     }
-    const MinerInfo &m = data.miners[i];
-    text(lx, yy, truncate(m.name, rf, nameW - 8, true), rf, col(m.ok ? C_TEXT : C_TITLE));
-    if (!m.ok) {
-      if (showHash) text(rx0, yy, L("offline", "offline"), rf, col(C_TITLE), RIGHT);
-      continue;
-    }
-    int rx = rx0;
-    if (showPow) markPart(1);
-    if (showTemp) markPart(0);
-    if (showPow) text(rx, yy, fmtDec(m.power, 0) + " W", rf, col(C_TEXT), RIGHT), rx -= cPow;
-    if (showTemp) text(rx, yy, fmtDec(m.temp, 0) + " °C", rf, col(C_TEXT), RIGHT), rx -= cTemp;
-    if (showHash) text(rx, yy, fmtHash(m.hashrate), rf, col(C_TEXT), RIGHT);
+    drawMinerTable(rows, side, order, ix + sideW, cy, ch);
+    return;
   }
+  const int listH = below.rows * below.pitch;
+  const int base = cy + (ch + hash.h - (listH ? listH + 8 : 0)) / 2;
+  text(ix, base, hash.s, hash.f, col(C_TEXT));
+  if (pwW && textWidth(hash.s, hash.f) + 10 + pwW <= iw) {
+    text(ix + iw, base, pw, pf, col(C_TEXT), RIGHT);
+    markPart(1);
+  }
+  drawMinerTable(rows, below, order, ix, base + 8, listH);
 }
 
 static void wMiner(int x, int y, int w, int h) { minerAll(x, y, w, h); }
