@@ -256,7 +256,7 @@ String fmtTime(time_t t, const char *fmt);
 String fmtDate(time_t t, bool withYear);
 String fmtPrice(uint32_t v, uint8_t cur);
 String fmtSI(double v);
-String fmtDuration(uint32_t sec);
+String fmtDuration(uint32_t sec, bool compact = false);
 String moscowTime(uint32_t price);
 const char *monthName(int m);
 

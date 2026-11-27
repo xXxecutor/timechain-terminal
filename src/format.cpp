@@ -122,8 +122,14 @@ String fmtSI(double v) {
 }
 
 // 3 Tg. 4 Std. / 5 Std. 12 Min. / 12 Min. (Englisch 3d 4h / 5h 12m / 12 min)
-String fmtDuration(uint32_t sec) {
+String fmtDuration(uint32_t sec, bool compact) {
   uint32_t d = sec / 86400, h = sec / 3600 % 24, m = sec / 60 % 60;
+  if (compact) {
+    if (d >= 10) return String(d) + " d";
+    if (d) return String(d) + " d " + String(h) + " h";
+    if (h) return String(h) + " h " + String(m) + " min";
+    return String(m) + " min";
+  }
   if (d >= 10) return String(d) + (lang == LANG_EN ? " days" : " Tage");
   if (lang == LANG_EN) {
     if (d) return String(d) + "d " + String(h) + "h";
